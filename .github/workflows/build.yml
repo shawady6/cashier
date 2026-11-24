@@ -14,26 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract initial project archive
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $archive = 'pos-system-phase0(1).zip'
-          if (-not (Test-Path $archive)) {
-            throw "Upload pos-system-phase0(1).zip to the repository root to start the first build."
-          }
-          $source = Join-Path $env:RUNNER_TEMP 'pos-phase0'
-          Expand-Archive -LiteralPath $archive -DestinationPath $source -Force
-          Get-ChildItem -LiteralPath $source -Force |
-            Where-Object { $_.Name -ne '.github' } |
-            ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $PWD -Recurse -Force }
-          git rm $archive
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'chore: unpack initial POS project [skip ci]'
-          git push
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
