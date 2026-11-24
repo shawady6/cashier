@@ -2766,6 +2766,7 @@ dependencies = [
 name = "pos-system"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "sqlx",
@@ -2776,6 +2777,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]
