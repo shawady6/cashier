@@ -18,9 +18,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $archive = 'pos-system-phase0.zip'
+          $archive = 'pos-system-phase0(1).zip'
           if (-not (Test-Path $archive)) {
-            throw "Upload pos-system-phase0.zip to the repository root to start the first build."
+            throw "Upload pos-system-phase0(1).zip to the repository root to start the first build."
           }
           $source = Join-Path $env:RUNNER_TEMP 'pos-phase0'
           Expand-Archive -LiteralPath $archive -DestinationPath $source -Force
