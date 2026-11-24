@@ -1,0 +1,62 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bootstrap source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = 'bootstrap/pos-system-phase0.zip'
+          if (-not (Test-Path $archive)) { throw "Source archive not found: $archive" }
+          $source = Join-Path $env:RUNNER_TEMP 'pos-phase0'
+          Expand-Archive -LiteralPath $archive -DestinationPath $source -Force
+          Get-ChildItem -LiteralPath $source -Force | Where-Object { $_.Name -ne '.github' } | Copy-Item -Destination $PWD -Recurse -Force
+          git rm $archive
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'chore: unpack initial POS project [skip ci]'
+          git push
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Typecheck and build frontend
+        run: npm run build
+      - name: Generate app icons
+        run: npx tauri icon app-icon.svg
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build Windows app
+        run: npx tauri build
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cashier-windows
+          path: |
+            src-tauri/target/release/pos-system.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
+      - name: Publish prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Build ${{ github.run_number }}
+          prerelease: true
+          files: |
+            src-tauri/target/release/pos-system.exe
+            src-tauri/target/release/bundle/nsis/*.exe
