@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import ComingSoon from "../components/ComingSoon";
 import MainLayout from "../layouts/MainLayout";
+import CategoriesPage from "../pages/Categories";
 import Dashboard from "../pages/Dashboard";
+import ProductsPage from "../pages/Products";
 import SettingsPage from "../pages/Settings";
 import { useSettingsStore } from "../store/settingsStore";
 import { navItems } from "./navigation";
@@ -19,9 +21,11 @@ export default function App() {
       <Routes>
         <Route element={<MainLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="products" element={<ProductsPage />} />
+          <Route path="categories" element={<CategoriesPage />} />
           <Route path="settings" element={<SettingsPage />} />
           {navItems
-            .filter((item) => item.phase !== 0)
+            .filter((item) => item.phase > 1)
             .map((item) => (
               <Route
                 key={item.path}
