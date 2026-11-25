@@ -302,6 +302,49 @@ export interface AdjustInput {
   note?: string;
 }
 
+export interface Warehouse { id: string; nameAr: string; isDefault: boolean; isActive: boolean; stockValueMinor: number }
+export interface BalanceRow {
+  warehouseId: string; warehouseName: string; productId: string; variantId: string | null;
+  nameAr: string; variantName: string | null; sku: string | null; baseUnitName: string;
+  qtyMilli: number; valueMinor: number; avgCostMinor: number;
+}
+export interface BalancesReport { rows: BalanceRow[]; totalValueMinor: number }
+export interface MovementRow {
+  id: string; createdAt: string; warehouseName: string; nameAr: string; variantName: string | null;
+  movementType: string; qtyDeltaMilli: number; valueDeltaMinor: number; note: string;
+}
+export interface LowStockRow { productId: string; nameAr: string; baseUnitName: string; stockQtyMilli: number; minStockQtyMilli: number }
+export interface TransferRow { id: string; transferNo: string; fromName: string; toName: string; note: string; createdAt: string; itemCount: number; valueMinor: number }
+export interface TransferInput {
+  fromWarehouseId: string; toWarehouseId: string; note?: string;
+  items: { productId: string; variantId: string | null; qty: string }[];
+}
+export interface CountRow { id: string; countNo: string; warehouseName: string; status: string; note: string; createdAt: string; finalizedAt: string | null; itemCount: number }
+export interface CountItem { id: string; nameAr: string; variantName: string | null; baseUnitName: string; systemQtyMilli: number; countedQtyMilli: number | null }
+export interface CountDetail { header: CountRow; items: CountItem[] }
+export interface Supplier { id: string; nameAr: string; phone: string; address: string; notes: string; isActive: boolean; balanceMinor: number }
+export interface SupplierInput { id?: string; nameAr: string; phone: string; address: string; notes: string; isActive: boolean }
+export interface PurchaseRow {
+  id: string; purchaseNo: string; supplierName: string; supplierInvoiceNo: string; status: string;
+  totalMinor: number; paidMinor: number; returnedMinor: number; createdAt: string; receivedAt: string | null;
+}
+export interface PurchaseItemDetail {
+  id: string; lineNo: number; productId: string; variantId: string | null; nameAr: string; variantName: string | null;
+  unitId: string; unitName: string; qtyMilli: number; unitCostMinor: number; lineTotalMinor: number; netMinor: number; returnedQtyMilli: number;
+}
+export interface PurchaseDetail {
+  header: PurchaseRow; supplierId: string; warehouseId: string; warehouseName: string; note: string;
+  subtotalMinor: number; discountMinor: number; outstandingMinor: number;
+  items: PurchaseItemDetail[];
+  payments: { id: string; method: string; amountMinor: number; note: string; createdAt: string }[];
+  returns: { id: string; returnNo: string; totalMinor: number; note: string; createdAt: string }[];
+}
+export interface PurchaseInput {
+  id?: string; supplierId: string; warehouseId: string; supplierInvoiceNo: string; note: string;
+  discount: DiscountInput | null;
+  items: { productId: string; variantId: string | null; unitId: string | null; qty: string; unitCost: string }[];
+}
+
 /** كل الحسابات والتحقق في Rust. هذه الطبقة مجرد جسر للأوامر. */
 export const api = {
   getAppInfo: () => invoke<AppInfo>("get_app_info"),
@@ -334,4 +377,30 @@ export const api = {
   resumeSale: (id: string) => invoke<SuspendedSale>("resume_sale", { id }),
   discardSuspendedSale: (id: string) => invoke<void>("discard_suspended_sale", { id }),
   adjustStock: (input: AdjustInput) => invoke<void>("adjust_stock", { input }),
+  listWarehouses: () => invoke<Warehouse[]>("list_warehouses"),
+  saveWarehouse: (input: { id?: string; nameAr: string; isActive: boolean; isDefault: boolean }) =>
+    invoke<string>("save_warehouse", { input }),
+  stockBalances: (filter: { warehouseId?: string; query?: string }) => invoke<BalancesReport>("stock_balances", { filter }),
+  stockMovements: (filter: { warehouseId?: string; movementType?: string; limit?: number }) =>
+    invoke<MovementRow[]>("stock_movements", { filter }),
+  lowStockReport: () => invoke<LowStockRow[]>("low_stock_report"),
+  createTransfer: (input: TransferInput) => invoke<string>("create_transfer", { input }),
+  listTransfers: () => invoke<TransferRow[]>("list_transfers"),
+  createCount: (input: { warehouseId: string; categoryId?: string | null; note?: string }) => invoke<string>("create_count", { input }),
+  listCounts: () => invoke<CountRow[]>("list_counts"),
+  getCount: (id: string) => invoke<CountDetail>("get_count", { id }),
+  saveCountLines: (id: string, lines: { itemId: string; countedQty: string | null }[]) => invoke<void>("save_count_lines", { id, lines }),
+  finalizeCount: (id: string) => invoke<number>("finalize_count", { id }),
+  cancelCount: (id: string) => invoke<void>("cancel_count", { id }),
+  listSuppliers: () => invoke<Supplier[]>("list_suppliers"),
+  saveSupplier: (input: SupplierInput) => invoke<string>("save_supplier", { input }),
+  listPurchases: (filter: { supplierId?: string; status?: string; query?: string }) => invoke<PurchaseRow[]>("list_purchases", { filter }),
+  getPurchase: (id: string) => invoke<PurchaseDetail>("get_purchase", { id }),
+  savePurchaseDraft: (input: PurchaseInput) => invoke<string>("save_purchase_draft", { input }),
+  receivePurchase: (id: string) => invoke<void>("receive_purchase", { id }),
+  cancelPurchaseDraft: (id: string) => invoke<void>("cancel_purchase_draft", { id }),
+  addSupplierPayment: (input: { purchaseId: string; method: "cash" | "card"; amount: string; note?: string }) =>
+    invoke<string>("add_supplier_payment", { input }),
+  createPurchaseReturn: (input: { purchaseId: string; items: { purchaseItemId: string; qty: string }[]; note?: string }) =>
+    invoke<{ returnNo: string; credit: number }>("create_purchase_return", { input }),
 };

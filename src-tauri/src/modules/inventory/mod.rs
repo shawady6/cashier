@@ -3,6 +3,14 @@
 //! متوسط التكلفة = value / qty، وعند بيع كل الرصيد تُخصم القيمة كاملة.
 //! المرحلة 3 تضيف المخازن المتعددة والنقل والجرد فوق نفس الجداول.
 
+pub mod counts;
+pub mod reports;
+pub mod transfers;
+pub mod warehouses;
+
+#[cfg(test)]
+mod stock_tests;
+
 use serde::Deserialize;
 use sqlx::{SqliteConnection, SqlitePool};
 use uuid::Uuid;
@@ -25,6 +33,48 @@ pub async fn allow_negative(conn: &mut SqliteConnection) -> Result<bool, AppErro
             .fetch_optional(&mut *conn)
             .await?;
     Ok(v.as_deref() == Some("1"))
+}
+
+pub struct ProductInfo {
+    pub name: String,
+    pub variant_name: Option<String>,
+    pub allows_decimal: bool,
+    pub base_unit_name: String,
+    /// سعر الشراء الحالي للوحدة الأساسية (تكلفة احتياطية)
+    pub fallback_cost: i64,
+}
+
+/// بيانات منتج/متغير للتحقق. ترفض منتجًا غير موجود أو متغيرًا لا يخصه.
+pub async fn product_info(
+    conn: &mut SqliteConnection,
+    product: &str,
+    variant: Option<&str>,
+) -> Result<ProductInfo, AppError> {
+    let row: Option<(String, bool, String, i64)> = sqlx::query_as(
+        "SELECT p.name_ar, u.allows_decimal, u.name_ar, p.purchase_price FROM products p \
+         JOIN units u ON u.id = p.base_unit_id WHERE p.id = ?1",
+    )
+    .bind(product)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let Some((name, allows_decimal, base_unit_name, mut fallback_cost)) = row else {
+        return Err(AppError::Validation("منتج غير موجود".into()));
+    };
+    let mut variant_name = None;
+    if let Some(v) = variant {
+        let vr: Option<(String, i64)> =
+            sqlx::query_as("SELECT name_ar, purchase_price FROM product_variants WHERE id = ?1 AND product_id = ?2")
+                .bind(v)
+                .bind(product)
+                .fetch_optional(&mut *conn)
+                .await?;
+        let Some((vn, vc)) = vr else {
+            return Err(AppError::Validation("المتغير لا يخص هذا المنتج".into()));
+        };
+        variant_name = Some(vn);
+        fallback_cost = vc;
+    }
+    Ok(ProductInfo { name, variant_name, allows_decimal, base_unit_name, fallback_cost })
 }
 
 #[derive(Debug, Clone, Copy, Default)]

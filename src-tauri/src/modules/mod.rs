@@ -1,6 +1,7 @@
 pub mod inventory;
 pub mod lookups;
 pub mod products;
+pub mod purchasing;
 pub mod sales;
 pub mod settings;
 
