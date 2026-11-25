@@ -47,4 +47,11 @@ SQLite في `%APPDATA%\com.shawady.pos\pos.db`، وليست في مجلد الت
 - أُعيد بناء `stock_movements` (أنواع: adjustment, sale, sale_return, purchase, purchase_return, transfer_out, transfer_in, count) و`cash_transactions` (نوع جديد supplier_payment) مع الحفاظ على البيانات.
 - أرصدة المورد = المشتريات المستلمة − المرتجعات − الدفعات (محسوبة ولا تُخزَّن).
 
-باقي الجداول (العملاء، العملاء، الخزينة…) تُضاف في المراحل القادمة.
+## المرحلة 4 (migration 0005)
+- `customers` (حد ائتماني، 0 = بلا حد)، `customer_payments` (لا تُعدَّل/تُحذف). رصيد العميل = مجموع (إجمالي − مدفوع + باقي) لفواتيره − السداد − `sales_returns.credit_minor`؛ محسوب ولا يُخزَّن.
+- `sales.customer_id` و`sales_returns.credit_minor` (أعمدة جديدة عبر ALTER بدون المساس بالفواتير القديمة).
+- `cash_sessions` (وردية مفتوحة واحدة بفهرس فريد جزئي، المغلقة لا تُعدَّل)، `cash_entries`، و`cash_transactions` أُعيد بناؤها بعمود `session_id` وأنواع expense/expense_void/customer_payment/cash_in/cash_out وحماية من التعديل والحذف.
+- `expense_categories` (مع تصنيفات افتراضية) و`expenses` (لا حذف ولا تعديل، الإلغاء فقط).
+- إعداد `require_cash_session`.
+
+باقي الجداول (التقارير، العملاء، الخزينة…) تُضاف في المراحل القادمة.

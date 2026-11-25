@@ -81,6 +81,20 @@ pub fn run() {
             commands::cancel_purchase_draft,
             commands::add_supplier_payment,
             commands::create_purchase_return,
+            commands::open_cash_session,
+            commands::current_cash_session,
+            commands::close_cash_session,
+            commands::list_cash_sessions,
+            commands::add_cash_entry,
+            commands::list_expense_categories,
+            commands::save_expense_category,
+            commands::create_expense,
+            commands::void_expense,
+            commands::list_expenses,
+            commands::list_customers,
+            commands::save_customer,
+            commands::add_customer_payment,
+            commands::customer_statement,
         ])
         .run(tauri::generate_context!())
         .expect("خطأ أثناء تشغيل التطبيق");

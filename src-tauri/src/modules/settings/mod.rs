@@ -21,6 +21,7 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "receipt_footer",
     "receipt_paper_width",
     "pos_shortcuts",
+    "require_cash_session",
 ];
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

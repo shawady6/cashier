@@ -71,6 +71,10 @@ export default function Receipt({ sale, settings }: { sale: SaleDetail; settings
             <span>{methodLabel[p.method] ?? p.method}</span><span>{formatMoney(p.amountMinor)}</span>
           </div>
         ))}
+        {sale.dueMinor > 0 && (
+          <div className="flex justify-between font-bold"><span>آجل على العميل</span><span>{formatMoney(sale.dueMinor)}</span></div>
+        )}
+        {sale.customerName && <div>العميل: {sale.customerName}</div>}
         {sale.changeMinor > 0 && (
           <div className="flex justify-between font-bold"><span>الباقي</span><span>{formatMoney(sale.changeMinor)}</span></div>
         )}

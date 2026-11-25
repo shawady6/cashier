@@ -3,7 +3,7 @@ import Alert from "../../components/Alert";
 import Modal from "../../components/Modal";
 import { btnGhost, btnPrimary, inputClass } from "../../components/ui";
 import { formatMoney, minorToInput } from "../../lib/format";
-import { api, type CartInput, type CartQuote, type CheckoutResult } from "../../services/api";
+import { api, type CartInput, type CartQuote, type CheckoutResult, type Customer } from "../../services/api";
 
 /**
  * الدفع: الحقول نصوص فقط. المدفوع والباقي والفكة تُحسب في Rust عبر price_cart،
@@ -25,6 +25,8 @@ export default function PaymentDialog({
   const [quote, setQuote] = useState<CartQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerId, setCustomerId] = useState("");
   const requestId = useRef(crypto.randomUUID());
   const seq = useRef(0);
 
@@ -34,20 +36,24 @@ export default function PaymentDialog({
   ];
 
   useEffect(() => {
+    api.listCustomers().then((c) => setCustomers(c.filter((x) => x.isActive))).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     const mine = ++seq.current;
     api
-      .priceCart({ ...baseCart, payments })
+      .priceCart({ ...baseCart, payments, customerId: customerId || null })
       .then((q) => { if (mine === seq.current) { setQuote(q); setError(null); } })
       .catch((e) => { if (mine === seq.current) setError(String(e)); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cash, card, baseCart]);
+  }, [cash, card, baseCart, customerId]);
 
   async function confirm() {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      const r = await api.checkout({ ...baseCart, payments, clientRequestId: requestId.current });
+      const r = await api.checkout({ ...baseCart, payments, customerId: customerId || null, clientRequestId: requestId.current });
       onDone(r);
     } catch (e) {
       setError(String(e));
@@ -55,7 +61,9 @@ export default function PaymentDialog({
     }
   }
 
-  const ready = quote !== null && quote.remaining === 0 && !error;
+  const credit = quote !== null && quote.remaining > 0;
+  const ready = quote !== null && (quote.remaining === 0 || customerId !== "") && !error;
+  const chosen = customers.find((c) => c.id === customerId);
 
   return (
     <Modal title="الدفع" onClose={busy ? () => {} : onClose}>
@@ -85,10 +93,23 @@ export default function PaymentDialog({
         </div>
         <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-center text-sm dark:bg-slate-900/40">
           <div><div className="text-slate-500">المدفوع</div><div className="font-semibold">{formatMoney(quote?.paid ?? 0)}</div></div>
-          <div><div className="text-slate-500">المتبقي</div><div className={`font-semibold ${quote && quote.remaining > 0 ? "text-red-600" : ""}`}>{formatMoney(quote?.remaining ?? total)}</div></div>
+          <div><div className="text-slate-500">المتبقي</div><div className={`font-semibold ${quote && quote.remaining > 0 && !customerId ? "text-red-600" : ""}`}>{formatMoney(quote?.remaining ?? total)}</div></div>
           <div><div className="text-slate-500">الباقي للعميل</div><div className="text-lg font-bold text-teal-700">{formatMoney(quote?.change ?? 0)}</div></div>
         </div>
-        <p className="text-xs text-slate-500">الدفع الجزئي والبيع الآجل يتاحان مع العملاء في مرحلة لاحقة.</p>
+        <label className="block text-sm">
+          العميل {credit ? "(مطلوب للبيع الآجل)" : "(اختياري)"}
+          <select className={`${inputClass} mt-1`} value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">بدون عميل</option>
+            {customers.map((c) => <option key={c.id} value={c.id}>{c.nameAr}</option>)}
+          </select>
+        </label>
+        {chosen && (
+          <p className="text-xs text-slate-500">
+            مستحق عليه الآن: {formatMoney(chosen.balanceMinor)}
+            {chosen.creditLimitMinor > 0 ? ` · الحد الائتماني ${formatMoney(chosen.creditLimitMinor)}` : ""}
+          </p>
+        )}
+        {credit && customerId !== "" && <Alert kind="ok">سيُسجَّل {formatMoney(quote?.remaining ?? 0)} آجل على العميل.</Alert>}
         <div className="flex justify-end gap-2">
           <button type="button" className={btnGhost} onClick={onClose} disabled={busy}>رجوع</button>
           <button type="submit" className={btnPrimary} disabled={!ready || busy}>

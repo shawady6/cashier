@@ -121,6 +121,16 @@ export default function SettingsPage() {
           />
           السماح بالبيع عند نفاد المخزون (مخزون سالب)
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={settings.require_cash_session === "1"}
+            onChange={(e) =>
+              void save([["require_cash_session", e.target.checked ? "1" : "0"]], "تم تحديث إعداد وردية الخزينة")
+            }
+          />
+          إلزام فتح وردية خزينة قبل أي بيع أو حركة مالية
+        </label>
       </section>
 
       <PosSettings />

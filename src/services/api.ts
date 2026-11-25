@@ -196,6 +196,7 @@ export interface CartInput {
   payments: PaymentInput[];
   clientRequestId?: string;
   note?: string;
+  customerId?: string | null;
 }
 
 export interface QuoteLine {
@@ -243,6 +244,7 @@ export interface SaleListItem {
   paymentStatus: string;
   itemCount: number;
   returnedMinor: number;
+  customerName: string | null;
 }
 
 export interface SaleItemDetail {
@@ -274,9 +276,11 @@ export interface SaleDetail {
   paidMinor: number;
   changeMinor: number;
   note: string;
+  customerName: string | null;
+  dueMinor: number;
   items: SaleItemDetail[];
   payments: { method: string; amountMinor: number; reference: string }[];
-  returns: { id: string; returnNo: string; refundMinor: number; refundMethod: string; reason: string; createdAt: string }[];
+  returns: { id: string; returnNo: string; refundMinor: number; refundMethod: string; reason: string; createdAt: string; creditMinor: number }[];
 }
 
 export interface SuspendedSale {
@@ -345,6 +349,28 @@ export interface PurchaseInput {
   items: { productId: string; variantId: string | null; unitId: string | null; qty: string; unitCost: string }[];
 }
 
+export interface SessionSummary {
+  id: string; status: string; openedAt: string; closedAt: string | null; openingMinor: number;
+  cashSalesMinor: number; cardSalesMinor: number; cashReturnsMinor: number; cashExpensesMinor: number;
+  supplierPaymentsMinor: number; customerPaymentsMinor: number; cashInMinor: number; cashOutMinor: number;
+  cardTotalMinor: number; expectedCashMinor: number; countedCashMinor: number | null; differenceMinor: number | null; note: string;
+}
+export interface ExpenseCategory { id: string; nameAr: string; isActive: boolean }
+export interface ExpenseRow {
+  id: string; categoryName: string; amountMinor: number; method: string; description: string;
+  createdAt: string; voidedAt: string | null; voidReason: string | null;
+}
+export interface ExpenseReport { rows: ExpenseRow[]; totalMinor: number }
+export interface Customer {
+  id: string; nameAr: string; phone: string; address: string; notes: string;
+  creditLimitMinor: number; isActive: boolean; balanceMinor: number;
+}
+export interface CustomerInput {
+  id?: string; nameAr: string; phone: string; address: string; notes: string; creditLimit: string; isActive: boolean;
+}
+export interface StatementRow { date: string; kind: "sale" | "payment" | "return"; refNo: string; debitMinor: number; creditMinor: number; balanceMinor: number }
+export interface Statement { customer: Customer; rows: StatementRow[] }
+
 /** كل الحسابات والتحقق في Rust. هذه الطبقة مجرد جسر للأوامر. */
 export const api = {
   getAppInfo: () => invoke<AppInfo>("get_app_info"),
@@ -403,4 +429,20 @@ export const api = {
     invoke<string>("add_supplier_payment", { input }),
   createPurchaseReturn: (input: { purchaseId: string; items: { purchaseItemId: string; qty: string }[]; note?: string }) =>
     invoke<{ returnNo: string; credit: number }>("create_purchase_return", { input }),
+  openCashSession: (opening: string, note?: string) => invoke<string>("open_cash_session", { opening, note }),
+  currentCashSession: () => invoke<SessionSummary | null>("current_cash_session"),
+  closeCashSession: (id: string, counted: string, note?: string) => invoke<SessionSummary>("close_cash_session", { id, counted, note }),
+  listCashSessions: () => invoke<SessionSummary[]>("list_cash_sessions"),
+  addCashEntry: (input: { direction: "in" | "out"; amount: string; reason: string }) => invoke<string>("add_cash_entry", { input }),
+  listExpenseCategories: () => invoke<ExpenseCategory[]>("list_expense_categories"),
+  saveExpenseCategory: (input: { id?: string; nameAr: string; isActive: boolean }) => invoke<string>("save_expense_category", { input }),
+  createExpense: (input: { categoryId: string; amount: string; method: "cash" | "card"; description: string }) =>
+    invoke<string>("create_expense", { input }),
+  voidExpense: (id: string, reason: string) => invoke<void>("void_expense", { id, reason }),
+  listExpenses: (filter: { categoryId?: string; dateFrom?: string; dateTo?: string }) => invoke<ExpenseReport>("list_expenses", { filter }),
+  listCustomers: () => invoke<Customer[]>("list_customers"),
+  saveCustomer: (input: CustomerInput) => invoke<string>("save_customer", { input }),
+  addCustomerPayment: (input: { customerId: string; method: "cash" | "card"; amount: string; note?: string }) =>
+    invoke<string>("add_customer_payment", { input }),
+  customerStatement: (id: string) => invoke<Statement>("customer_statement", { id }),
 };

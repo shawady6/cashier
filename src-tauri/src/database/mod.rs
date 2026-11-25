@@ -80,7 +80,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(n, 4);
+        assert_eq!(n, 5);
     }
 
     #[tokio::test]

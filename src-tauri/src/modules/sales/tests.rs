@@ -15,7 +15,7 @@ fn pay(method: &str, amount: &str) -> PaymentInput {
 }
 
 fn cart(items: Vec<CartItemInput>, payments: Vec<PaymentInput>) -> CartInput {
-    CartInput { items, invoice_discount: None, payments, client_request_id: None, note: String::new() }
+    CartInput { items, invoice_discount: None, payments, client_request_id: None, note: String::new(), customer_id: None }
 }
 
 async fn scalar(pool: &SqlitePool, sql: &str) -> i64 {
