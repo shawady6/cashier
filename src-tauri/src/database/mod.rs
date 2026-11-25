@@ -80,7 +80,7 @@ mod tests {
             .fetch_one(&pool)
             .await
             .unwrap();
-        assert_eq!(n, 5);
+        assert_eq!(n, 6);
     }
 
     #[tokio::test]
@@ -91,5 +91,44 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n, 4);
+    }
+
+    /// الـ migration 0006 يُطبَّق على قاعدة فيها بيانات فعلية ولا يمس شيئًا منها.
+    #[tokio::test]
+    async fn migration_0006_applies_on_existing_data() {
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+        use std::str::FromStr;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_with(SqliteConnectOptions::from_str("sqlite::memory:").unwrap().foreign_keys(true))
+            .await
+            .unwrap();
+        for sql in [
+            include_str!("../../migrations/0001_init.sql"),
+            include_str!("../../migrations/0002_catalog.sql"),
+            include_str!("../../migrations/0003_sales.sql"),
+            include_str!("../../migrations/0004_inventory_purchasing.sql"),
+            include_str!("../../migrations/0005_finance.sql"),
+        ] {
+            sqlx::raw_sql(sql).execute(&pool).await.unwrap();
+        }
+        let carton = "b4d2e2e3-7c1f-4a7b-8e45-2e7b9e1a0006";
+        let piece = "b4d2e2e3-7c1f-4a7b-8e45-2e7b9e1a0001";
+        sqlx::query("INSERT INTO products (id, name_ar, base_unit_id, sale_price) VALUES ('p1', 'قديم', ?1, 1500)").bind(piece).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO product_units (id, product_id, unit_id, factor_micro, is_purchase_unit, is_sale_unit) VALUES ('u1','p1',?1,12000000,1,1)").bind(carton).execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO product_barcodes (id, product_id, barcode) VALUES ('b1','p1','123')").execute(&pool).await.unwrap();
+
+        sqlx::raw_sql(include_str!("../../migrations/0006_big_units.sql")).execute(&pool).await.unwrap();
+
+        let (price, factor): (Option<i64>, i64) = sqlx::query_as("SELECT sale_price_minor, factor_micro FROM product_units WHERE id='u1'").fetch_one(&pool).await.unwrap();
+        assert_eq!((price, factor), (None, 12_000_000));
+        let unit: Option<String> = sqlx::query_scalar("SELECT unit_id FROM product_barcodes WHERE id='b1'").fetch_one(&pool).await.unwrap();
+        assert!(unit.is_none());
+        let sale: i64 = sqlx::query_scalar("SELECT sale_price FROM products WHERE id='p1'").fetch_one(&pool).await.unwrap();
+        assert_eq!(sale, 1500);
+        // العمود الجديد في بنود الشراء موجود
+        sqlx::query("SELECT new_sale_price_minor FROM purchase_items").fetch_all(&pool).await.unwrap();
     }
 }

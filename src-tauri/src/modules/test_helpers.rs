@@ -24,7 +24,7 @@ pub async fn product(pool: &SqlitePool, name: &str, purchase: &str, sale: &str) 
 /// منتج بالقطعة مع كرتونة (12 قطعة) كوحدة بيع.
 pub async fn product_with_carton(pool: &SqlitePool, name: &str, purchase: &str, sale: &str) -> String {
     let mut i = base_input(name, purchase, sale);
-    i.units = vec![ProductUnitInput { unit_id: CARTON.into(), factor: "12".into(), is_purchase_unit: true, is_sale_unit: true }];
+    i.units = vec![ProductUnitInput { unit_id: CARTON.into(), factor: "12".into(), is_purchase_unit: true, is_sale_unit: true, ..Default::default() }];
     products::save(pool, &i).await.unwrap()
 }
 
@@ -39,7 +39,7 @@ pub async fn stock(pool: &SqlitePool, product_id: &str, qty: &str, unit_cost: &s
         pool,
         &AdjustInput {
             product_id: product_id.into(), variant_id: None, direction: "increase".into(), qty: qty.into(),
-            unit_cost: Some(unit_cost.into()), note: String::new(),
+            unit_cost: Some(unit_cost.into()), note: String::new(), ..Default::default()
         },
     )
     .await

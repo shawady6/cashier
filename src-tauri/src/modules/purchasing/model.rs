@@ -44,6 +44,12 @@ pub struct PurchaseItemInput {
     pub qty: String,
     /// تكلفة وحدة الشراء بالجنيه
     pub unit_cost: String,
+    /// عدد القطع في وحدة الشراء لهذا البند فقط (مثلًا 14 بدل 24). فارغ = الافتراضي للمنتج.
+    #[serde(default)]
+    pub factor: Option<String>,
+    /// سعر بيع وحدة الشراء. يُطبَّق عند الاستلام فقط.
+    #[serde(default)]
+    pub sale_price: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -94,10 +100,13 @@ pub struct PurchaseItemDetail {
     pub variant_name: Option<String>,
     pub unit_id: String,
     pub unit_name: String,
+    pub unit_factor_micro: i64,
     pub qty_milli: i64,
+    pub base_qty_milli: i64,
     pub unit_cost_minor: i64,
     pub line_total_minor: i64,
     pub net_minor: i64,
+    pub new_sale_price_minor: Option<i64>,
     pub returned_qty_milli: i64,
 }
 

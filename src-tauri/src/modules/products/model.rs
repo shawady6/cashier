@@ -56,7 +56,7 @@ pub struct VariantInput {
     pub barcodes: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductUnitInput {
     pub unit_id: String,
@@ -66,6 +66,12 @@ pub struct ProductUnitInput {
     pub is_purchase_unit: bool,
     #[serde(default)]
     pub is_sale_unit: bool,
+    /// سعر بيع الوحدة الكبيرة بالجنيه. فارغ = سعر القطعة × العدد.
+    #[serde(default)]
+    pub sale_price: Option<String>,
+    /// باركود الوحدة الكبيرة (اختياري).
+    #[serde(default)]
+    pub barcode: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -146,6 +152,8 @@ pub struct ProductUnitDetail {
     pub factor_micro: i64,
     pub is_purchase_unit: bool,
     pub is_sale_unit: bool,
+    pub sale_price_minor: Option<i64>,
+    pub barcode: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -180,6 +188,8 @@ pub struct BarcodeMatch {
     pub sale_price: i64,
     pub is_active: bool,
     pub archived: bool,
+    /// لو الباركود يخص وحدة كبيرة
+    pub unit_id: Option<String>,
 }
 
 /// عنصر قابل للبيع في الكاشير: منتج عادي أو متغير منتج.
@@ -198,6 +208,8 @@ pub struct Sellable {
     pub base_unit_name: String,
     pub allows_decimal: bool,
     pub units: Vec<SellUnit>,
+    /// الوحدة التي طابقها باركود الوحدة الكبيرة (يضيفها الكاشير بهذه الوحدة)
+    pub matched_unit_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -207,4 +219,6 @@ pub struct SellUnit {
     pub name_ar: String,
     pub factor_micro: i64,
     pub allows_decimal: bool,
+    /// سعر بيع هذه الوحدة (NULL = سعر القطعة × المعامل)
+    pub sale_price_minor: Option<i64>,
 }

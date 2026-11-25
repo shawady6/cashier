@@ -154,7 +154,11 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
     }
 
     // تفرد الباركود (باستثناء باركودات هذا المنتج نفسه لأنها ستُستبدل)
-    let all_barcodes = p.barcodes.iter().chain(p.variants.iter().flat_map(|v| v.barcodes.iter()));
+    let all_barcodes = p
+        .barcodes
+        .iter()
+        .chain(p.variants.iter().flat_map(|v| v.barcodes.iter()))
+        .chain(p.units.iter().filter_map(|u| u.barcode.as_ref()));
     for b in all_barcodes {
         let owner: Option<String> = sqlx::query_scalar(
             "SELECT p.name_ar FROM product_barcodes pb JOIN products p ON p.id = pb.product_id \
@@ -286,11 +290,11 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .execute(&mut **tx)
         .await?;
     for b in &p.barcodes {
-        insert_barcode(tx, &product_id, None, b).await?;
+        insert_barcode(tx, &product_id, None, None, b).await?;
     }
     for (v, vid) in p.variants.iter().zip(&variant_ids) {
         for b in &v.barcodes {
-            insert_barcode(tx, &product_id, Some(vid), b).await?;
+            insert_barcode(tx, &product_id, Some(vid), None, b).await?;
         }
     }
 
@@ -301,8 +305,8 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .await?;
     for u in &p.units {
         sqlx::query(
-            "INSERT INTO product_units (id, product_id, unit_id, factor_micro, is_purchase_unit, is_sale_unit) \
-             VALUES (?1,?2,?3,?4,?5,?6)",
+            "INSERT INTO product_units (id, product_id, unit_id, factor_micro, is_purchase_unit, is_sale_unit, sale_price_minor) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&product_id)
@@ -310,8 +314,12 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .bind(u.factor_micro)
         .bind(u.src.is_purchase_unit)
         .bind(u.src.is_sale_unit)
+        .bind(u.sale_price)
         .execute(&mut **tx)
         .await?;
+        if let Some(b) = &u.barcode {
+            insert_barcode(tx, &product_id, None, Some(&u.src.unit_id), b).await?;
+        }
     }
 
     Ok(product_id)
@@ -321,12 +329,14 @@ async fn insert_barcode(
     tx: &mut Tx<'_>,
     product_id: &str,
     variant_id: Option<&str>,
+    unit_id: Option<&str>,
     barcode: &str,
 ) -> Result<(), AppError> {
-    sqlx::query("INSERT INTO product_barcodes (id, product_id, variant_id, barcode) VALUES (?1,?2,?3,?4)")
+    sqlx::query("INSERT INTO product_barcodes (id, product_id, variant_id, unit_id, barcode) VALUES (?1,?2,?3,?4,?5)")
         .bind(Uuid::new_v4().to_string())
         .bind(product_id)
         .bind(variant_id)
+        .bind(unit_id)
         .bind(barcode)
         .execute(&mut **tx)
         .await?;

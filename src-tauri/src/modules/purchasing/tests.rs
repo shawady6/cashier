@@ -15,7 +15,7 @@ async fn supplier(pool: &SqlitePool, name: &str) -> String {
 }
 
 fn line(pid: &str, qty: &str, cost: &str) -> PurchaseItemInput {
-    PurchaseItemInput { product_id: pid.into(), variant_id: None, unit_id: None, qty: qty.into(), unit_cost: cost.into() }
+    PurchaseItemInput { product_id: pid.into(), variant_id: None, unit_id: None, qty: qty.into(), unit_cost: cost.into(), factor: None, sale_price: None }
 }
 
 fn input(sup: &str, items: Vec<PurchaseItemInput>) -> PurchaseInput {

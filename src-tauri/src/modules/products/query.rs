@@ -19,7 +19,7 @@ pub async fn list(pool: &SqlitePool, f: &ProductFilter) -> Result<Vec<ProductLis
                 u.name_ar AS base_unit_name, p.purchase_price, p.sale_price, p.min_stock_qty, p.is_active, \
                 (p.archived_at IS NOT NULL) AS archived, \
                 (SELECT COUNT(*) FROM product_variants v WHERE v.product_id = p.id AND v.is_active = 1) AS variant_count, \
-                (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.variant_id IS NULL \
+                (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.variant_id IS NULL AND pb.unit_id IS NULL \
                    ORDER BY pb.created_at, pb.barcode LIMIT 1) AS first_barcode, \
                 COALESCE((SELECT SUM(sb.qty_milli) FROM stock_balances sb WHERE sb.product_id = p.id), 0) AS stock_qty \
          FROM products p \
@@ -86,7 +86,7 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<ProductDetail, AppError>
     let Some(r) = row else { return err("المنتج غير موجود") };
 
     let barcodes: Vec<(Option<String>, String)> = sqlx::query_as(
-        "SELECT variant_id, barcode FROM product_barcodes WHERE product_id = ?1 ORDER BY created_at, barcode",
+        "SELECT variant_id, barcode FROM product_barcodes WHERE product_id = ?1 AND unit_id IS NULL ORDER BY created_at, barcode",
     )
     .bind(id)
     .fetch_all(pool)
@@ -119,8 +119,9 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<ProductDetail, AppError>
         .collect();
 
     let units = sqlx::query_as::<_, ProductUnitDetail>(
-        "SELECT unit_id, factor_micro, is_purchase_unit, is_sale_unit FROM product_units \
-         WHERE product_id = ?1 ORDER BY factor_micro DESC",
+        "SELECT pu.unit_id, pu.factor_micro, pu.is_purchase_unit, pu.is_sale_unit, pu.sale_price_minor, \
+                (SELECT pb.barcode FROM product_barcodes pb WHERE pb.product_id = pu.product_id AND pb.unit_id = pu.unit_id LIMIT 1) AS barcode \
+         FROM product_units pu WHERE pu.product_id = ?1 ORDER BY pu.factor_micro DESC",
     )
     .bind(id)
     .fetch_all(pool)
@@ -155,7 +156,7 @@ pub async fn find_by_barcode(pool: &SqlitePool, barcode: &str) -> Result<Option<
         "SELECT p.id AS product_id, v.id AS variant_id, p.name_ar, v.name_ar AS variant_name_ar, \
                 COALESCE(v.sale_price, p.sale_price) AS sale_price, \
                 (p.is_active = 1 AND COALESCE(v.is_active, 1) = 1) AS is_active, \
-                (p.archived_at IS NOT NULL) AS archived \
+                (p.archived_at IS NOT NULL) AS archived, pb.unit_id \
          FROM product_barcodes pb \
          JOIN products p ON p.id = pb.product_id \
          LEFT JOIN product_variants v ON v.id = pb.variant_id \
@@ -219,7 +220,7 @@ pub async fn search_sellables(pool: &SqlitePool, query: &str, limit: i64) -> Res
     let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
         "SELECT * FROM ( \
            SELECT p.id AS product_id, NULL AS variant_id, p.name_ar, NULL AS variant_name, p.sku, \
-                  (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.variant_id IS NULL ORDER BY pb.created_at LIMIT 1) AS barcode, \
+                  (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.variant_id IS NULL AND pb.unit_id IS NULL ORDER BY pb.created_at LIMIT 1) AS barcode, \
                   p.sale_price, \
                   COALESCE((SELECT SUM(sb.qty_milli) FROM stock_balances sb WHERE sb.product_id = p.id AND sb.variant_id IS NULL), 0) AS stock_qty, \
                   p.base_unit_id, u.name_ar AS base_unit_name, u.allows_decimal, p.search_text AS search_text \
@@ -247,6 +248,7 @@ pub async fn search_sellables(pool: &SqlitePool, query: &str, limit: i64) -> Res
     }
     qb.push(" ORDER BY s.name_ar, s.variant_name LIMIT ").push_bind(limit.clamp(1, 100));
     let rows = qb.build_query_as::<SellableRow>().fetch_all(pool).await?;
+    let code = ascii_digits(query.trim());
 
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
@@ -255,20 +257,40 @@ pub async fn search_sellables(pool: &SqlitePool, query: &str, limit: i64) -> Res
             name_ar: r.base_unit_name.clone(),
             factor_micro: 1_000_000,
             allows_decimal: r.allows_decimal,
+            sale_price_minor: None,
         }];
         units.extend(
             sqlx::query_as::<_, SellUnit>(
-                "SELECT pu.unit_id, u.name_ar, pu.factor_micro, u.allows_decimal FROM product_units pu \
+                "SELECT pu.unit_id, u.name_ar, pu.factor_micro, u.allows_decimal, pu.sale_price_minor FROM product_units pu \
                  JOIN units u ON u.id = pu.unit_id WHERE pu.product_id = ?1 AND pu.is_sale_unit = 1 ORDER BY pu.factor_micro",
             )
             .bind(&r.product_id)
             .fetch_all(pool)
-            .await?,
+            .await?
+            .into_iter()
+            // سعر الوحدة الكبيرة المخصص يخص المنتج بلا متغيرات فقط
+            .map(|mut u| {
+                if r.variant_id.is_some() {
+                    u.sale_price_minor = None;
+                }
+                u
+            }),
         );
+        let matched_unit_id: Option<String> = if r.variant_id.is_none() {
+            sqlx::query_scalar(
+                "SELECT unit_id FROM product_barcodes WHERE product_id = ?1 AND barcode = ?2 AND unit_id IS NOT NULL",
+            )
+            .bind(&r.product_id)
+            .bind(&code)
+            .fetch_optional(pool)
+            .await?
+        } else {
+            None
+        };
         out.push(Sellable {
             product_id: r.product_id, variant_id: r.variant_id, name_ar: r.name_ar, variant_name: r.variant_name,
             sku: r.sku, barcode: r.barcode, sale_price: r.sale_price, stock_qty: r.stock_qty,
-            base_unit_id: r.base_unit_id, base_unit_name: r.base_unit_name, allows_decimal: r.allows_decimal, units,
+            base_unit_id: r.base_unit_id, base_unit_name: r.base_unit_name, allows_decimal: r.allows_decimal, units, matched_unit_id,
         });
     }
     Ok(out)

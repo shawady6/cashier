@@ -377,7 +377,7 @@ async fn stock_adjustment_helper_roundtrip_via_inventory_module() {
     stock(&pool, &p, "3", "10").await;
     adjust(
         &pool,
-        &AdjustInput { product_id: p.clone(), variant_id: None, direction: "decrease".into(), qty: "1".into(), unit_cost: None, note: "تالف".into() },
+        &AdjustInput { product_id: p.clone(), variant_id: None, direction: "decrease".into(), qty: "1".into(), unit_cost: None, note: "تالف".into(), ..Default::default() },
     )
     .await
     .unwrap();
