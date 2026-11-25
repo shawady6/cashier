@@ -20,7 +20,8 @@ pub async fn list(pool: &SqlitePool, f: &ProductFilter) -> Result<Vec<ProductLis
                 (p.archived_at IS NOT NULL) AS archived, \
                 (SELECT COUNT(*) FROM product_variants v WHERE v.product_id = p.id AND v.is_active = 1) AS variant_count, \
                 (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.variant_id IS NULL \
-                   ORDER BY pb.created_at, pb.barcode LIMIT 1) AS first_barcode \
+                   ORDER BY pb.created_at, pb.barcode LIMIT 1) AS first_barcode, \
+                COALESCE((SELECT SUM(sb.qty_milli) FROM stock_balances sb WHERE sb.product_id = p.id), 0) AS stock_qty \
          FROM products p \
          JOIN units u ON u.id = p.base_unit_id \
          LEFT JOIN categories c ON c.id = p.category_id \
@@ -195,4 +196,80 @@ pub async fn create_unit(pool: &SqlitePool, input: &UnitInput) -> Result<String,
         .execute(pool)
         .await?;
     Ok(id)
+}
+
+#[derive(sqlx::FromRow)]
+struct SellableRow {
+    product_id: String,
+    variant_id: Option<String>,
+    name_ar: String,
+    variant_name: Option<String>,
+    sku: Option<String>,
+    barcode: Option<String>,
+    sale_price: i64,
+    stock_qty: i64,
+    base_unit_id: String,
+    base_unit_name: String,
+    allows_decimal: bool,
+}
+
+/// بحث الكاشير: منتجات نشطة وغير مؤرشفة، والمنتج ذو المتغيرات يظهر كمتغيرات.
+/// يطابق الاسم (مُطبَّعًا) أو SKU أو الباركود.
+pub async fn search_sellables(pool: &SqlitePool, query: &str, limit: i64) -> Result<Vec<Sellable>, AppError> {
+    let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
+        "SELECT * FROM ( \
+           SELECT p.id AS product_id, NULL AS variant_id, p.name_ar, NULL AS variant_name, p.sku, \
+                  (SELECT barcode FROM product_barcodes pb WHERE pb.product_id = p.id AND pb.variant_id IS NULL ORDER BY pb.created_at LIMIT 1) AS barcode, \
+                  p.sale_price, \
+                  COALESCE((SELECT SUM(sb.qty_milli) FROM stock_balances sb WHERE sb.product_id = p.id AND sb.variant_id IS NULL), 0) AS stock_qty, \
+                  p.base_unit_id, u.name_ar AS base_unit_name, u.allows_decimal, p.search_text AS search_text \
+           FROM products p JOIN units u ON u.id = p.base_unit_id \
+           WHERE p.archived_at IS NULL AND p.is_active = 1 \
+             AND NOT EXISTS (SELECT 1 FROM product_variants v WHERE v.product_id = p.id AND v.is_active = 1) \
+           UNION ALL \
+           SELECT p.id, v.id, p.name_ar, v.name_ar, COALESCE(v.sku, p.sku), \
+                  (SELECT barcode FROM product_barcodes pb WHERE pb.variant_id = v.id ORDER BY pb.created_at LIMIT 1), \
+                  v.sale_price, \
+                  COALESCE((SELECT SUM(sb.qty_milli) FROM stock_balances sb WHERE sb.variant_id = v.id), 0), \
+                  p.base_unit_id, u.name_ar, u.allows_decimal, p.search_text \
+           FROM product_variants v JOIN products p ON p.id = v.product_id JOIN units u ON u.id = p.base_unit_id \
+           WHERE p.archived_at IS NULL AND p.is_active = 1 AND v.is_active = 1 \
+         ) s WHERE 1 = 1",
+    );
+    for token in normalize(query).split(' ').filter(|t| !t.is_empty()) {
+        let pattern = format!("%{}%", like_escape(token));
+        qb.push(" AND (s.search_text LIKE ")
+            .push_bind(pattern.clone())
+            .push(" ESCAPE '\\' OR EXISTS (SELECT 1 FROM product_barcodes pb WHERE pb.product_id = s.product_id \
+                    AND (s.variant_id IS NULL OR pb.variant_id = s.variant_id) AND pb.barcode LIKE ")
+            .push_bind(pattern)
+            .push(" ESCAPE '\\'))");
+    }
+    qb.push(" ORDER BY s.name_ar, s.variant_name LIMIT ").push_bind(limit.clamp(1, 100));
+    let rows = qb.build_query_as::<SellableRow>().fetch_all(pool).await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let mut units: Vec<SellUnit> = vec![SellUnit {
+            unit_id: r.base_unit_id.clone(),
+            name_ar: r.base_unit_name.clone(),
+            factor_micro: 1_000_000,
+            allows_decimal: r.allows_decimal,
+        }];
+        units.extend(
+            sqlx::query_as::<_, SellUnit>(
+                "SELECT pu.unit_id, u.name_ar, pu.factor_micro, u.allows_decimal FROM product_units pu \
+                 JOIN units u ON u.id = pu.unit_id WHERE pu.product_id = ?1 AND pu.is_sale_unit = 1 ORDER BY pu.factor_micro",
+            )
+            .bind(&r.product_id)
+            .fetch_all(pool)
+            .await?,
+        );
+        out.push(Sellable {
+            product_id: r.product_id, variant_id: r.variant_id, name_ar: r.name_ar, variant_name: r.variant_name,
+            sku: r.sku, barcode: r.barcode, sale_price: r.sale_price, stock_qty: r.stock_qty,
+            base_unit_id: r.base_unit_id, base_unit_name: r.base_unit_name, allows_decimal: r.allows_decimal, units,
+        });
+    }
+    Ok(out)
 }

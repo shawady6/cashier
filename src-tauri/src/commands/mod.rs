@@ -1,7 +1,9 @@
 //! أوامر Tauri: طبقة رفيعة تستدعي وحدات المنطق.
 
 mod catalog;
+mod sales;
 pub use catalog::*;
+pub use sales::*;
 
 use std::collections::HashMap;
 

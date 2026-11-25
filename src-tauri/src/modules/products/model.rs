@@ -99,6 +99,8 @@ pub struct ProductListItem {
     pub archived: bool,
     pub variant_count: i64,
     pub first_barcode: Option<String>,
+    /// الرصيد الحالي بالألف (بالوحدة الأساسية) في كل المخازن
+    pub stock_qty: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,4 +180,31 @@ pub struct BarcodeMatch {
     pub sale_price: i64,
     pub is_active: bool,
     pub archived: bool,
+}
+
+/// عنصر قابل للبيع في الكاشير: منتج عادي أو متغير منتج.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sellable {
+    pub product_id: String,
+    pub variant_id: Option<String>,
+    pub name_ar: String,
+    pub variant_name: Option<String>,
+    pub sku: Option<String>,
+    pub barcode: Option<String>,
+    pub sale_price: i64,
+    pub stock_qty: i64,
+    pub base_unit_id: String,
+    pub base_unit_name: String,
+    pub allows_decimal: bool,
+    pub units: Vec<SellUnit>,
+}
+
+#[derive(Debug, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct SellUnit {
+    pub unit_id: String,
+    pub name_ar: String,
+    pub factor_micro: i64,
+    pub allows_decimal: bool,
 }

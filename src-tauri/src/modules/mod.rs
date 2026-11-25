@@ -1,3 +1,8 @@
+pub mod inventory;
 pub mod lookups;
 pub mod products;
+pub mod sales;
 pub mod settings;
+
+#[cfg(test)]
+pub mod test_helpers;

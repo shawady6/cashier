@@ -17,6 +17,10 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "business_profile_code",
     "allow_negative_stock",
     "setup_completed",
+    "tax_rate_bp",
+    "receipt_footer",
+    "receipt_paper_width",
+    "pos_shortcuts",
 ];
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -104,6 +108,23 @@ async fn validate(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppEr
                 return Err(bad("القيمة يجب أن تكون 0 أو 1"));
             }
         }
+        "tax_rate_bp" => {
+            let ok = value.parse::<i64>().map(|v| (0..=10_000).contains(&v)).unwrap_or(false);
+            if !ok {
+                return Err(bad("نسبة الضريبة يجب أن تكون بين 0 و 10000 (نقطة أساسية)"));
+            }
+        }
+        "receipt_footer" => {
+            if value.chars().count() > 200 {
+                return Err(bad("نص أسفل الإيصال طويل"));
+            }
+        }
+        "receipt_paper_width" => {
+            if !["58", "80"].contains(&value) {
+                return Err(bad("عرض الورق 58 أو 80 مم"));
+            }
+        }
+        "pos_shortcuts" => validate_shortcuts(value)?,
         "business_profile_code" => {
             let found: Option<i64> =
                 sqlx::query_scalar("SELECT 1 FROM business_profiles WHERE code = ?1")
@@ -115,6 +136,32 @@ async fn validate(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppEr
             }
         }
         _ => {}
+    }
+    Ok(())
+}
+
+pub const SHORTCUT_ACTIONS: &[&str] = &["search", "pay", "suspend", "resume", "remove"];
+
+/// اختصارات الكاشير: JSON لقاموس action -> مفتاح. لا يُسمح بتكرار نفس المفتاح.
+fn validate_shortcuts(value: &str) -> Result<(), AppError> {
+    let bad = |m: &str| AppError::Validation(m.to_string());
+    let map: HashMap<String, String> =
+        serde_json::from_str(value).map_err(|_| bad("صيغة الاختصارات غير صالحة"))?;
+    let mut seen = std::collections::HashSet::new();
+    for (action, key) in &map {
+        if !SHORTCUT_ACTIONS.contains(&action.as_str()) {
+            return Err(bad("إجراء اختصار غير معروف"));
+        }
+        let valid_key = key == "Delete" || (key.len() >= 2 && key.starts_with('F') && key[1..].parse::<u8>().map(|n| (1..=12).contains(&n)).unwrap_or(false));
+        if !valid_key {
+            return Err(bad("المفاتيح المسموحة: F1 إلى F12 أو Delete"));
+        }
+        if key == "F5" || key == "F11" || key == "F12" {
+            return Err(bad("هذا المفتاح محجوز للنظام"));
+        }
+        if !seen.insert(key.clone()) {
+            return Err(bad("لا يمكن استخدام نفس المفتاح لأكثر من إجراء"));
+        }
     }
     Ok(())
 }
@@ -131,6 +178,25 @@ mod tests {
         assert_eq!(s.get("currency").map(String::as_str), Some("EGP"));
         assert_eq!(s.get("allow_negative_stock").map(String::as_str), Some("0"));
         assert_eq!(s.len(), ALLOWED_KEYS.len());
+    }
+
+    #[tokio::test]
+    async fn shortcuts_are_validated() {
+        let pool = memory_pool().await;
+        assert!(set(&pool, "pos_shortcuts", r#"{"pay":"F3","search":"F3"}"#).await.is_err());
+        assert!(set(&pool, "pos_shortcuts", r#"{"pay":"x"}"#).await.is_err());
+        assert!(set(&pool, "pos_shortcuts", r#"{"hack":"F3"}"#).await.is_err());
+        set(&pool, "pos_shortcuts", r#"{"pay":"F3","search":"F1"}"#).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn tax_rate_and_paper_width_are_validated() {
+        let pool = memory_pool().await;
+        assert!(set(&pool, "tax_rate_bp", "-1").await.is_err());
+        assert!(set(&pool, "tax_rate_bp", "abc").await.is_err());
+        set(&pool, "tax_rate_bp", "1400").await.unwrap();
+        assert!(set(&pool, "receipt_paper_width", "70").await.is_err());
+        set(&pool, "receipt_paper_width", "58").await.unwrap();
     }
 
     #[tokio::test]

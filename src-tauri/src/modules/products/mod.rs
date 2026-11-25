@@ -10,5 +10,5 @@ mod validate;
 mod tests;
 
 pub use model::*;
-pub use query::{create_unit, find_by_barcode, get, list, list_units};
+pub use query::{create_unit, find_by_barcode, get, list, list_units, search_sellables};
 pub use repo::{save, set_archived};

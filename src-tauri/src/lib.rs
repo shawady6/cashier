@@ -48,6 +48,17 @@ pub fn run() {
             commands::set_product_image,
             commands::remove_product_image,
             commands::get_product_image,
+            commands::search_sellables,
+            commands::price_cart,
+            commands::checkout,
+            commands::list_sales,
+            commands::get_sale,
+            commands::create_sales_return,
+            commands::suspend_sale,
+            commands::list_suspended_sales,
+            commands::resume_sale,
+            commands::discard_suspended_sale,
+            commands::adjust_stock,
         ])
         .run(tauri::generate_context!())
         .expect("خطأ أثناء تشغيل التطبيق");

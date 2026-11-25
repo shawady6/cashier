@@ -301,3 +301,25 @@ async fn custom_unit_creation_rejects_duplicates() {
     assert!(create_unit(&pool, &u).await.is_err());
     assert!(list_units(&pool).await.unwrap().len() >= 10);
 }
+
+#[tokio::test]
+async fn sellable_search_hides_archived_and_expands_variants() {
+    let pool = memory_pool().await;
+    settings::set(&pool, "business_profile_code", "perfumes").await.unwrap();
+    let mut p = input("عطر");
+    let mut v = variant("50 مل");
+    v.barcodes = vec!["v50".into()];
+    p.variants = vec![v, variant("100 مل")];
+    save(&pool, &p).await.unwrap();
+    let plain = save(&pool, &input("صابون")).await.unwrap();
+
+    let all = search_sellables(&pool, "", 50).await.unwrap();
+    assert_eq!(all.len(), 3); // صابون + متغيران، والمنتج ذو المتغيرات لا يظهر وحده
+    let by_barcode = search_sellables(&pool, "v50", 50).await.unwrap();
+    assert_eq!(by_barcode.len(), 1);
+    assert_eq!(by_barcode[0].variant_name.as_deref(), Some("50 مل"));
+    assert_eq!(search_sellables(&pool, "صابون", 50).await.unwrap()[0].units.len(), 1);
+
+    set_archived(&pool, &plain, true).await.unwrap();
+    assert_eq!(search_sellables(&pool, "", 50).await.unwrap().len(), 2);
+}

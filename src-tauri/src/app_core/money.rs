@@ -38,6 +38,26 @@ pub fn parse_minor(input: &str) -> Result<i64, AppError> {
     Ok(total)
 }
 
+/// قسمة صحيحة بتقريب نصف لأعلى بعيدًا عن الصفر (سياسة التقريب الوحيدة في النظام).
+/// يُستخدم لكل حساب نسبة/ضرب في كسر: الخصم، الضريبة، تحويل الوحدات، التكلفة.
+pub fn div_round(num: i128, den: i128) -> i128 {
+    assert!(den > 0, "المقام يجب أن يكون موجبًا");
+    if num >= 0 {
+        (num + den / 2) / den
+    } else {
+        (num - den / 2) / den
+    }
+}
+
+/// نسبة مئوية نصية ("12.5") إلى نقاط أساسية (1250). بين 0 و 100%.
+pub fn parse_percent_bp(input: &str) -> Result<i64, AppError> {
+    let v = parse_minor(input)?;
+    if v > 10_000 {
+        return Err(AppError::Validation("النسبة المئوية لا تتجاوز 100".into()));
+    }
+    Ok(v)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,6 +77,21 @@ mod tests {
         for v in ["", "-1", "1.234", "abc", "1.2.3", ".", "1e3", "9999999999999"] {
             assert!(parse_minor(v).is_err(), "should reject {v}");
         }
+    }
+
+    #[test]
+    fn div_round_is_half_away_from_zero() {
+        assert_eq!(div_round(5, 2), 3);
+        assert_eq!(div_round(4, 3), 1);
+        assert_eq!(div_round(-5, 2), -3);
+        assert_eq!(div_round(0, 7), 0);
+    }
+
+    #[test]
+    fn percent_parsing() {
+        assert_eq!(parse_percent_bp("14").unwrap(), 1400);
+        assert_eq!(parse_percent_bp("12.5").unwrap(), 1250);
+        assert!(parse_percent_bp("100.01").is_err());
     }
 
     #[test]
