@@ -41,4 +41,10 @@ SQLite في `%APPDATA%\com.shawady.pos\pos.db`، وليست في مجلد الت
 - سعر الوحدة الإضافية = سعر الأساسية × معامل التحويل.
 - التكلفة المباعة = متوسط التكلفة المرجّح وقت البيع. عند السماح بالمخزون السالب يُكلَّف الجزء غير المتاح بسعر الشراء الحالي.
 
-باقي الجداول (المشتريات، العملاء، الخزينة…) تُضاف في المراحل القادمة.
+## المرحلة 3 (migration 0004)
+- `suppliers`, `purchases` (draft/received/cancelled), `purchase_items`, `purchase_payments`, `purchase_returns`, `purchase_return_items`: المخزون يزيد عند الاستلام فقط؛ بعده تُمنع التعديلات بـ triggers.
+- `stock_transfers` + بنودها، `stock_counts` + بنودها (لقطة رصيد النظام والمعدود؛ بعد الاعتماد لا تعديل).
+- أُعيد بناء `stock_movements` (أنواع: adjustment, sale, sale_return, purchase, purchase_return, transfer_out, transfer_in, count) و`cash_transactions` (نوع جديد supplier_payment) مع الحفاظ على البيانات.
+- أرصدة المورد = المشتريات المستلمة − المرتجعات − الدفعات (محسوبة ولا تُخزَّن).
+
+باقي الجداول (العملاء، العملاء، الخزينة…) تُضاف في المراحل القادمة.
