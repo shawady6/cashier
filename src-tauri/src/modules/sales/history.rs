@@ -19,7 +19,8 @@ pub async fn list(pool: &SqlitePool, f: &SaleFilter) -> Result<Vec<SaleListItem>
     let mut qb: QueryBuilder<Sqlite> = QueryBuilder::new(
         "SELECT s.id, s.invoice_no, s.created_at, s.total_minor, s.payment_status, \
                 (SELECT COUNT(*) FROM sale_items WHERE sale_id = s.id) AS item_count, \
-                COALESCE((SELECT SUM(refund_minor) FROM sales_returns WHERE sale_id = s.id), 0) AS returned_minor \
+                COALESCE((SELECT SUM(refund_minor) FROM sales_returns WHERE sale_id = s.id), 0) AS returned_minor, \
+                (SELECT name_ar FROM customers WHERE id = s.customer_id) AS customer_name \
          FROM sales s WHERE 1 = 1",
     );
     if let Some(q) = f.query.as_ref().map(|q| q.trim()).filter(|q| !q.is_empty()) {
@@ -61,16 +62,24 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<SaleDetail, AppError> {
     .fetch_all(pool)
     .await?;
     let returns = sqlx::query_as::<_, ReturnSummary>(
-        "SELECT id, return_no, refund_minor, refund_method, reason, created_at FROM sales_returns \
+        "SELECT id, return_no, refund_minor, refund_method, reason, created_at, credit_minor FROM sales_returns \
          WHERE sale_id = ?1 ORDER BY created_at, return_no",
     )
     .bind(id)
     .fetch_all(pool)
     .await?;
 
+    let customer_name: Option<String> = sqlx::query_scalar(
+        "SELECT c.name_ar FROM sales s JOIN customers c ON c.id = s.customer_id WHERE s.id = ?1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+
     Ok(SaleDetail {
         id: h.0, invoice_no: h.1, created_at: h.2, payment_status: h.3, subtotal_minor: h.4,
         item_discount_minor: h.5, invoice_discount_minor: h.6, tax_minor: h.7, total_minor: h.8,
-        paid_minor: h.9, change_minor: h.10, note: h.11, items, payments, returns,
+        paid_minor: h.9, change_minor: h.10, note: h.11, customer_name,
+        due_minor: (h.8 - (h.9 - h.10)).max(0), items, payments, returns,
     })
 }

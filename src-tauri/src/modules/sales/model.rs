@@ -41,6 +41,9 @@ pub struct CartInput {
     pub client_request_id: Option<String>,
     #[serde(default)]
     pub note: String,
+    /// مطلوب لو المدفوع أقل من الإجمالي (بيع آجل).
+    #[serde(default)]
+    pub customer_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -141,6 +144,7 @@ pub struct SaleListItem {
     pub payment_status: String,
     pub item_count: i64,
     pub returned_minor: i64,
+    pub customer_name: Option<String>,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -178,6 +182,7 @@ pub struct ReturnSummary {
     pub refund_method: String,
     pub reason: String,
     pub created_at: String,
+    pub credit_minor: i64,
 }
 
 #[derive(Debug, Serialize)]
@@ -195,6 +200,9 @@ pub struct SaleDetail {
     pub paid_minor: i64,
     pub change_minor: i64,
     pub note: String,
+    pub customer_name: Option<String>,
+    /// المتبقي على العميل (آجل) لحظة البيع
+    pub due_minor: i64,
     pub items: Vec<SaleItemDetail>,
     pub payments: Vec<PaymentDetail>,
     pub returns: Vec<ReturnSummary>,

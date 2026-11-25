@@ -65,6 +65,7 @@ async fn receiving_twice_gives_weighted_average_used_by_sales_profit() {
         payments: vec![sales::PaymentInput { method: "cash".into(), amount: "200".into(), reference: String::new() }],
         client_request_id: None,
         note: String::new(),
+        customer_id: None,
     };
     sales::checkout(&pool, &cart).await.unwrap();
     assert_eq!(count(&pool, "SELECT cost_minor FROM sales").await, 6000); // 4 × متوسط 15
@@ -247,6 +248,7 @@ async fn stock_sale(pool: &SqlitePool, pid: &str, qty: &str) {
         payments: vec![sales::PaymentInput { method: "cash".into(), amount: "1000".into(), reference: String::new() }],
         client_request_id: None,
         note: String::new(),
+        customer_id: None,
     };
     sales::checkout(pool, &cart).await.unwrap();
 }

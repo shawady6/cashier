@@ -5,6 +5,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use uuid::Uuid;
 
 use crate::app_core::error::AppError;
+use crate::modules::finance;
 use crate::modules::inventory::{self, MovementRef};
 
 use super::model::{CartInput, CartQuote, CheckoutResult};
@@ -79,12 +80,22 @@ async fn checkout_in_tx(conn: &mut SqliteConnection, input: &CartInput, key: &st
 
     // 1-3: تحقق السلة والأسعار والخصومات (الأسعار من القاعدة)
     let q = quote(conn, input).await?;
+    let customer_id = input.customer_id.clone().filter(|c| !c.trim().is_empty());
     if q.remaining > 0 {
-        return Err(AppError::Validation(format!(
-            "المدفوع أقل من إجمالي الفاتورة (المتبقي {} قرش). البيع الآجل يتاح مع العملاء في مرحلة لاحقة",
-            q.remaining
-        )));
+        let Some(c) = &customer_id else {
+            return Err(AppError::Validation("المدفوع أقل من إجمالي الفاتورة. اختر عميلًا للبيع الآجل".into()));
+        };
+        finance::customers::check_credit(conn, c, q.remaining).await?;
+    } else if let Some(c) = &customer_id {
+        finance::customers::check_credit(conn, c, 0).await?;
     }
+    let payment_status = if q.remaining == 0 {
+        "paid"
+    } else if q.paid > 0 {
+        "partial"
+    } else {
+        "unpaid"
+    };
 
     let sale_id = Uuid::new_v4().to_string();
     let warehouse = inventory::default_warehouse(conn).await?;
@@ -107,8 +118,8 @@ async fn checkout_in_tx(conn: &mut SqliteConnection, input: &CartInput, key: &st
     let invoice_no = next_number(conn, "invoice", "INV-").await?;
     sqlx::query(
         "INSERT INTO sales (id, invoice_no, idempotency_key, warehouse_id, subtotal_minor, item_discount_minor, \
-         invoice_discount_minor, tax_minor, total_minor, paid_minor, change_minor, cost_minor, note) \
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13)",
+         invoice_discount_minor, tax_minor, total_minor, paid_minor, change_minor, cost_minor, note, payment_status, customer_id) \
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
     )
     .bind(&sale_id)
     .bind(&invoice_no)
@@ -123,6 +134,8 @@ async fn checkout_in_tx(conn: &mut SqliteConnection, input: &CartInput, key: &st
     .bind(q.change)
     .bind(cost_total)
     .bind(input.note.trim())
+    .bind(payment_status)
+    .bind(&customer_id)
     .execute(&mut *conn)
     .await?;
 
@@ -176,16 +189,7 @@ async fn checkout_in_tx(conn: &mut SqliteConnection, input: &CartInput, key: &st
     }
     for (method, amount) in [("cash", q.cash_net), ("card", q.card)] {
         if amount > 0 {
-            sqlx::query(
-                "INSERT INTO cash_transactions (id, kind, method, amount_minor, ref_type, ref_id) \
-                 VALUES (?1,'sale',?2,?3,'sale',?4)",
-            )
-            .bind(Uuid::new_v4().to_string())
-            .bind(method)
-            .bind(amount)
-            .bind(&sale_id)
-            .execute(&mut *conn)
-            .await?;
+            finance::record_tx(conn, "sale", method, amount, "sale", &sale_id).await?;
         }
     }
 

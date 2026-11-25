@@ -58,16 +58,17 @@ export default function SalesPage() {
           <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900/40"><tr>
             <th className="px-4 py-2 text-start">رقم الفاتورة</th><th className="px-4 py-2 text-start">التاريخ</th>
             <th className="px-4 py-2 text-start">البنود</th><th className="px-4 py-2 text-start">الإجمالي</th>
-            <th className="px-4 py-2 text-start">المرتجع</th><th className="px-4 py-2 text-start">الدفع</th><th className="w-16" />
+            <th className="px-4 py-2 text-start">العميل</th><th className="px-4 py-2 text-start">المرتجع</th><th className="px-4 py-2 text-start">الدفع</th><th className="w-16" />
           </tr></thead>
           <tbody>
-            {rows.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-slate-500">لا توجد فواتير</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">لا توجد فواتير</td></tr>}
             {rows.map((r) => (
               <tr key={r.id} className="border-t border-slate-100 dark:border-slate-700">
                 <td className="px-4 py-2 font-medium" dir="ltr">{r.invoiceNo}</td>
                 <td className="px-4 py-2">{new Date(r.createdAt).toLocaleString("ar-EG")}</td>
                 <td className="px-4 py-2">{r.itemCount.toLocaleString("ar-EG")}</td>
                 <td className="px-4 py-2 font-semibold">{formatMoney(r.totalMinor)}</td>
+                <td className="px-4 py-2">{r.customerName ?? "—"}</td>
                 <td className="px-4 py-2">{r.returnedMinor > 0 ? <span className="text-amber-600">{formatMoney(r.returnedMinor)}</span> : "—"}</td>
                 <td className="px-4 py-2">{r.paymentStatus === "paid" ? "مدفوعة" : r.paymentStatus === "partial" ? "جزئي" : "غير مدفوعة"}</td>
                 <td className="px-2"><button className={btnGhost} aria-label="عرض" onClick={() => open(r.id)}><Eye size={14} /></button></td>
@@ -103,6 +104,8 @@ export default function SalesPage() {
               <div className="space-y-1">
                 <div className="font-semibold">المدفوعات</div>
                 {detail.payments.map((p, i) => <div key={i} className="flex justify-between"><span>{methodLabel[p.method] ?? p.method}</span><span>{formatMoney(p.amountMinor)}</span></div>)}
+                {detail.customerName && <div className="flex justify-between"><span>العميل</span><span>{detail.customerName}</span></div>}
+                {detail.dueMinor > 0 && <div className="flex justify-between font-semibold text-red-600"><span>آجل</span><span>{formatMoney(detail.dueMinor)}</span></div>}
                 {detail.changeMinor > 0 && <div className="flex justify-between text-slate-500"><span>الباقي للعميل</span><span>{formatMoney(detail.changeMinor)}</span></div>}
               </div>
               <div className="space-y-1">

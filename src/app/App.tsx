@@ -3,7 +3,9 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import ComingSoon from "../components/ComingSoon";
 import MainLayout from "../layouts/MainLayout";
 import CategoriesPage from "../pages/Categories";
+import CustomersPage from "../pages/Customers";
 import Dashboard from "../pages/Dashboard";
+import TreasuryPage from "../pages/Treasury";
 import InventoryPage from "../pages/Inventory";
 import PosPage from "../pages/POS";
 import ProductsPage from "../pages/Products";
@@ -33,9 +35,11 @@ export default function App() {
           <Route path="inventory" element={<InventoryPage />} />
           <Route path="purchases" element={<PurchasesPage />} />
           <Route path="suppliers" element={<SuppliersPage />} />
+          <Route path="customers" element={<CustomersPage />} />
+          <Route path="expenses" element={<TreasuryPage />} />
           <Route path="settings" element={<SettingsPage />} />
           {navItems
-            .filter((item) => item.phase > 3)
+            .filter((item) => item.phase > 4)
             .map((item) => (
               <Route
                 key={item.path}

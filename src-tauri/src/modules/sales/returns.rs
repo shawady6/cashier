@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::app_core::error::AppError;
 use crate::app_core::money::div_round;
 use crate::app_core::quantity::parse_qty;
+use crate::modules::finance;
 use crate::modules::inventory::{self, MovementRef};
 
 use super::checkout::next_number;
@@ -107,14 +108,26 @@ async fn create_in_tx(conn: &mut SqliteConnection, input: &ReturnInput) -> Resul
         planned.push((r, qty, base, refund, cost));
     }
 
+    // العميل الآجل: يُخصم المرتجع من مديونيته أولًا، والباقي يُردّ بالطريقة المختارة.
+    let customer: Option<String> = sqlx::query_scalar("SELECT customer_id FROM sales WHERE id = ?1")
+        .bind(&input.sale_id)
+        .fetch_one(&mut *conn)
+        .await?;
+    let credit = match &customer {
+        Some(c) => refund_total.min(finance::customers::balance(conn, c).await?.max(0)),
+        None => 0,
+    };
+    let cash_refund = refund_total - credit;
+
     let return_no = next_number(conn, "return", "RET-").await?;
-    sqlx::query("INSERT INTO sales_returns (id, return_no, sale_id, refund_minor, refund_method, reason) VALUES (?1,?2,?3,?4,?5,?6)")
+    sqlx::query("INSERT INTO sales_returns (id, return_no, sale_id, refund_minor, refund_method, reason, credit_minor) VALUES (?1,?2,?3,?4,?5,?6,?7)")
         .bind(&return_id)
         .bind(&return_no)
         .bind(&input.sale_id)
         .bind(refund_total)
         .bind(&input.refund_method)
         .bind(input.reason.trim())
+        .bind(credit)
         .execute(&mut *conn)
         .await?;
 
@@ -137,17 +150,8 @@ async fn create_in_tx(conn: &mut SqliteConnection, input: &ReturnInput) -> Resul
         inventory::receive(conn, &warehouse, &r.product_id, r.variant_id.as_deref(), base, cost, &movement).await?;
     }
 
-    if refund_total > 0 {
-        sqlx::query(
-            "INSERT INTO cash_transactions (id, kind, method, amount_minor, ref_type, ref_id) \
-             VALUES (?1,'sale_return',?2,?3,'sales_return',?4)",
-        )
-        .bind(Uuid::new_v4().to_string())
-        .bind(&input.refund_method)
-        .bind(-refund_total)
-        .bind(&return_id)
-        .execute(&mut *conn)
-        .await?;
+    if cash_refund > 0 {
+        finance::record_tx(conn, "sale_return", &input.refund_method, -cash_refund, "sales_return", &return_id).await?;
     }
 
     Ok(ReturnResult { return_id, return_no, refund: refund_total })

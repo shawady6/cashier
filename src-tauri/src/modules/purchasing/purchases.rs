@@ -371,15 +371,7 @@ pub async fn add_payment(pool: &SqlitePool, input: &SupplierPaymentInput) -> Res
         .bind(input.note.trim())
         .execute(&mut *tx)
         .await?;
-    sqlx::query(
-        "INSERT INTO cash_transactions (id, kind, method, amount_minor, ref_type, ref_id) VALUES (?1,'supplier_payment',?2,?3,'purchase_payment',?4)",
-    )
-    .bind(Uuid::new_v4().to_string())
-    .bind(&input.method)
-    .bind(-amount)
-    .bind(&id)
-    .execute(&mut *tx)
-    .await?;
+    crate::modules::finance::record_tx(&mut tx, "supplier_payment", &input.method, -amount, "purchase_payment", &id).await?;
     tx.commit().await?;
     Ok(id)
 }
