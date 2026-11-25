@@ -18,3 +18,20 @@
     @apply outline-2 outline-offset-2 outline-teal-600;
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .receipt-print,
+  .receipt-print * {
+    visibility: visible;
+  }
+  .receipt-print {
+    position: fixed;
+    top: 0;
+    right: 0;
+    margin: 0 !important;
+    padding: 2mm !important;
+  }
+}

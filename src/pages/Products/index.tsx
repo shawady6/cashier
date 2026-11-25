@@ -1,4 +1,4 @@
-import { Archive, ArchiveRestore, Pencil, Plus, Search } from "lucide-react";
+import { Archive, ArchiveRestore, Boxes, Pencil, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import Alert from "../../components/Alert";
 import Modal from "../../components/Modal";
@@ -14,6 +14,7 @@ import {
 } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
 import ProductForm from "./ProductForm";
+import StockDialog from "./StockDialog";
 
 export default function ProductsPage() {
   const profileCode = useSettingsStore((s) => s.settings.business_profile_code);
@@ -27,6 +28,7 @@ export default function ProductsPage() {
   const [brandId, setBrandId] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<{ id: string | null } | null>(null);
+  const [stockFor, setStockFor] = useState<ProductListItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const loadRefs = useCallback(() => {
@@ -119,13 +121,14 @@ export default function ProductsPage() {
               <th className="px-4 py-2 text-start">الوحدة</th>
               <th className="px-4 py-2 text-start">سعر الشراء</th>
               <th className="px-4 py-2 text-start">سعر البيع</th>
+              <th className="px-4 py-2 text-start">الرصيد</th>
               <th className="px-4 py-2 text-start">الحالة</th>
-              <th className="w-24" />
+              <th className="w-32" />
             </tr>
           </thead>
           <tbody>
             {products.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">لا توجد منتجات مطابقة</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">لا توجد منتجات مطابقة</td></tr>
             )}
             {products.map((p) => (
               <tr key={p.id} className={`border-t border-slate-100 dark:border-slate-700 ${p.archived ? "opacity-60" : ""}`}>
@@ -141,6 +144,9 @@ export default function ProductsPage() {
                 <td className="px-4 py-2">{p.baseUnitName}</td>
                 <td className="px-4 py-2">{formatMoney(p.purchasePrice)}</td>
                 <td className="px-4 py-2 font-semibold">{formatMoney(p.salePrice)}</td>
+                <td className={`px-4 py-2 ${p.stockQty <= 0 ? "text-red-600" : p.minStockQty > 0 && p.stockQty <= p.minStockQty ? "text-amber-600" : ""}`}>
+                  {formatQty(p.stockQty)}
+                </td>
                 <td className="px-4 py-2">
                   {p.archived ? <span className="text-slate-500">مؤرشف</span>
                     : p.isActive ? <span className="text-teal-700">نشط</span>
@@ -149,6 +155,7 @@ export default function ProductsPage() {
                 </td>
                 <td className="px-2">
                   <div className="flex gap-1">
+                    <button className={btnGhost} aria-label="رصيد المخزون" onClick={() => setStockFor(p)}><Boxes size={14} /></button>
                     <button className={btnGhost} aria-label="تعديل" onClick={() => setEditing({ id: p.id })}><Pencil size={14} /></button>
                     <button className={btnGhost} aria-label={p.archived ? "استرجاع" : "أرشفة"} onClick={() => toggleArchive(p)}>
                       {p.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
@@ -160,6 +167,10 @@ export default function ProductsPage() {
           </tbody>
         </table>
       </div>
+
+      {stockFor && (
+        <StockDialog product={stockFor} onClose={() => setStockFor(null)} onDone={() => { setStockFor(null); loadProducts(); }} />
+      )}
 
       {editing && (
         <Modal wide title={editing.id ? "تعديل منتج" : "منتج جديد"} onClose={() => setEditing(null)}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PageHeader from "../../components/PageHeader";
+import PosSettings from "./PosSettings";
 import { api, type BusinessProfile } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
 
@@ -121,6 +122,8 @@ export default function SettingsPage() {
           السماح بالبيع عند نفاد المخزون (مخزون سالب)
         </label>
       </section>
+
+      <PosSettings />
     </div>
   );
 }

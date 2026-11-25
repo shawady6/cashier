@@ -76,6 +76,8 @@ export interface ProductListItem {
   archived: boolean;
   variantCount: number;
   firstBarcode: string | null;
+  /** بالألف، بالوحدة الأساسية */
+  stockQty: number;
 }
 
 export interface VariantDetail {
@@ -147,6 +149,159 @@ export interface ProductInput {
   units: { unitId: string; factor: string; isPurchaseUnit: boolean; isSaleUnit: boolean }[];
 }
 
+export interface SellUnit {
+  unitId: string;
+  nameAr: string;
+  factorMicro: number;
+  allowsDecimal: boolean;
+}
+
+export interface Sellable {
+  productId: string;
+  variantId: string | null;
+  nameAr: string;
+  variantName: string | null;
+  sku: string | null;
+  barcode: string | null;
+  salePrice: number;
+  stockQty: number;
+  baseUnitId: string;
+  baseUnitName: string;
+  allowsDecimal: boolean;
+  units: SellUnit[];
+}
+
+export interface DiscountInput {
+  kind: "amount" | "percent";
+  value: string;
+}
+
+export interface CartItemInput {
+  productId: string;
+  variantId: string | null;
+  unitId: string | null;
+  qty: string;
+  discount: DiscountInput | null;
+}
+
+export interface PaymentInput {
+  method: "cash" | "card";
+  amount: string;
+  reference?: string;
+}
+
+export interface CartInput {
+  items: CartItemInput[];
+  invoiceDiscount: DiscountInput | null;
+  payments: PaymentInput[];
+  clientRequestId?: string;
+  note?: string;
+}
+
+export interface QuoteLine {
+  productId: string;
+  variantId: string | null;
+  nameAr: string;
+  variantName: string | null;
+  unitName: string;
+  qtyMilli: number;
+  unitPrice: number;
+  gross: number;
+  discount: number;
+  invoiceDiscount: number;
+  tax: number;
+  total: number;
+}
+
+export interface CartQuote {
+  lines: QuoteLine[];
+  subtotal: number;
+  itemDiscount: number;
+  invoiceDiscount: number;
+  tax: number;
+  total: number;
+  paid: number;
+  change: number;
+  remaining: number;
+  cashNet: number;
+  card: number;
+}
+
+export interface CheckoutResult {
+  saleId: string;
+  invoiceNo: string;
+  total: number;
+  change: number;
+  duplicate: boolean;
+}
+
+export interface SaleListItem {
+  id: string;
+  invoiceNo: string;
+  createdAt: string;
+  totalMinor: number;
+  paymentStatus: string;
+  itemCount: number;
+  returnedMinor: number;
+}
+
+export interface SaleItemDetail {
+  id: string;
+  lineNo: number;
+  nameAr: string;
+  variantName: string | null;
+  unitName: string;
+  qtyMilli: number;
+  unitPriceMinor: number;
+  grossMinor: number;
+  discountMinor: number;
+  invoiceDiscountMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  returnedQtyMilli: number;
+}
+
+export interface SaleDetail {
+  id: string;
+  invoiceNo: string;
+  createdAt: string;
+  paymentStatus: string;
+  subtotalMinor: number;
+  itemDiscountMinor: number;
+  invoiceDiscountMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  paidMinor: number;
+  changeMinor: number;
+  note: string;
+  items: SaleItemDetail[];
+  payments: { method: string; amountMinor: number; reference: string }[];
+  returns: { id: string; returnNo: string; refundMinor: number; refundMethod: string; reason: string; createdAt: string }[];
+}
+
+export interface SuspendedSale {
+  id: string;
+  label: string;
+  payload: string;
+  createdAt: string;
+}
+
+export interface ReturnInput {
+  saleId: string;
+  items: { saleItemId: string; qty: string }[];
+  reason: string;
+  refundMethod: "cash" | "card";
+}
+
+export interface AdjustInput {
+  productId: string;
+  variantId: string | null;
+  direction: "increase" | "decrease";
+  qty: string;
+  unitCost?: string;
+  note?: string;
+}
+
 /** كل الحسابات والتحقق في Rust. هذه الطبقة مجرد جسر للأوامر. */
 export const api = {
   getAppInfo: () => invoke<AppInfo>("get_app_info"),
@@ -166,4 +321,17 @@ export const api = {
   setProductImage: (id: string, dataBase64: string) => invoke<void>("set_product_image", { id, dataBase64 }),
   removeProductImage: (id: string) => invoke<void>("remove_product_image", { id }),
   getProductImage: (id: string) => invoke<string | null>("get_product_image", { id }),
+  searchSellables: (query: string) => invoke<Sellable[]>("search_sellables", { query }),
+  priceCart: (cart: CartInput) => invoke<CartQuote>("price_cart", { cart }),
+  checkout: (cart: CartInput) => invoke<CheckoutResult>("checkout", { cart }),
+  listSales: (filter: { query?: string; dateFrom?: string; dateTo?: string }) =>
+    invoke<SaleListItem[]>("list_sales", { filter }),
+  getSale: (id: string) => invoke<SaleDetail>("get_sale", { id }),
+  createSalesReturn: (input: ReturnInput) =>
+    invoke<{ returnId: string; returnNo: string; refund: number }>("create_sales_return", { input }),
+  suspendSale: (label: string, payload: string) => invoke<string>("suspend_sale", { label, payload }),
+  listSuspendedSales: () => invoke<SuspendedSale[]>("list_suspended_sales"),
+  resumeSale: (id: string) => invoke<SuspendedSale>("resume_sale", { id }),
+  discardSuspendedSale: (id: string) => invoke<void>("discard_suspended_sale", { id }),
+  adjustStock: (input: AdjustInput) => invoke<void>("adjust_stock", { input }),
 };
