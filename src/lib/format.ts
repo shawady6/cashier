@@ -48,3 +48,8 @@ export function formatBigUnitStock(
   const rest = pieces % factor;
   return rest === 0 ? `${bigCount} ${big.nameAr}` : `${bigCount} ${big.nameAr} و ${rest} ${baseName}`;
 }
+
+/** نسبة من نقاط أساسية جاهزة من Rust (10000 = 100%) للعرض فقط. */
+export function formatBp(bp: number): string {
+  return `${(bp / 100).toLocaleString("ar-EG", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}

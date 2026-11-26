@@ -191,6 +191,83 @@ export interface Sellable {
   defaultUnitId: string;
 }
 
+export interface DateRange {
+  dateFrom: string | null;
+  dateTo: string | null;
+}
+export interface SalesDayRow {
+  day: string;
+  invoices: number;
+  totalMinor: number;
+  taxMinor: number;
+  returnsMinor: number;
+  revenueMinor: number;
+  cogsMinor: number;
+  profitMinor: number;
+}
+export interface SalesReport {
+  invoices: number;
+  grossMinor: number;
+  discountsMinor: number;
+  taxMinor: number;
+  totalMinor: number;
+  returnsMinor: number;
+  netSalesMinor: number;
+  revenueMinor: number;
+  cogsMinor: number;
+  profitMinor: number;
+  marginBp: number;
+  byDay: SalesDayRow[];
+  byMethod: { method: string; receivedMinor: number; refundedMinor: number }[];
+}
+export interface ProductProfitRow {
+  productId: string;
+  variantId: string | null;
+  nameAr: string;
+  variantName: string | null;
+  qtyBaseMilli: number;
+  revenueMinor: number;
+  costMinor: number;
+  profitMinor: number;
+  marginBp: number;
+}
+export interface PurchasesReport {
+  invoices: number;
+  totalMinor: number;
+  returnedMinor: number;
+  paidMinor: number;
+  bySupplier: { supplierId: string; nameAr: string; invoices: number; totalMinor: number; returnedMinor: number; paidMinor: number }[];
+  byProduct: { productId: string; variantId: string | null; nameAr: string; variantName: string | null; qtyBaseMilli: number; valueMinor: number }[];
+}
+export interface ProfitLoss {
+  revenueMinor: number;
+  cogsMinor: number;
+  grossProfitMinor: number;
+  grossMarginBp: number;
+  expensesMinor: number;
+  netProfitMinor: number;
+  expensesByCategory: { category: string; amountMinor: number }[];
+}
+export interface DebtRow {
+  id: string;
+  nameAr: string;
+  phone: string;
+  amountMinor: number;
+}
+export interface DebtsSummary {
+  receivablesMinor: number;
+  payablesMinor: number;
+  customers: DebtRow[];
+  suppliers: DebtRow[];
+}
+export interface InventorySummary {
+  totalValueMinor: number;
+  itemsInStock: number;
+  lowStockCount: number;
+  warehouses: { nameAr: string; valueMinor: number }[];
+}
+export type CsvKind = "sales_daily" | "product_profit" | "purchases_suppliers" | "purchases_products" | "profit_loss" | "debts";
+
 export interface PricePreviewInput {
   factor?: string;
   pieceSale?: string;
@@ -444,6 +521,13 @@ export const api = {
   resumeSale: (id: string) => invoke<SuspendedSale>("resume_sale", { id }),
   discardSuspendedSale: (id: string) => invoke<void>("discard_suspended_sale", { id }),
   adjustStock: (input: AdjustInput) => invoke<void>("adjust_stock", { input }),
+  reportSales: (range: DateRange) => invoke<SalesReport>("report_sales", { range }),
+  reportProductProfit: (range: DateRange, sort: string, limit: number) => invoke<ProductProfitRow[]>("report_product_profit", { range, sort, limit }),
+  reportPurchases: (range: DateRange) => invoke<PurchasesReport>("report_purchases", { range }),
+  reportProfitLoss: (range: DateRange) => invoke<ProfitLoss>("report_profit_loss", { range }),
+  reportDebts: () => invoke<DebtsSummary>("report_debts"),
+  reportInventory: () => invoke<InventorySummary>("report_inventory"),
+  reportExportCsv: (kind: CsvKind, range: DateRange) => invoke<string>("report_export_csv", { kind, range }),
   adjustStockMany: (inputs: AdjustInput[]) => invoke<void>("adjust_stock_many", { inputs }),
   previewProductPrices: (input: PricePreviewInput) => invoke<PricePreview>("preview_product_prices", { input }),
   listWarehouses: () => invoke<Warehouse[]>("list_warehouses"),
