@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PageHeader from "../../components/PageHeader";
+import AboutSection from "./AboutSection";
 import PosSettings from "./PosSettings";
 import { api, type BusinessProfile } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
@@ -134,6 +135,7 @@ export default function SettingsPage() {
       </section>
 
       <PosSettings />
+      <AboutSection />
     </div>
   );
 }

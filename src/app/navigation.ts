@@ -24,7 +24,7 @@ export interface NavItem {
 }
 
 export const navItems: NavItem[] = [
-  { path: "/", label: "لوحة التحكم", icon: LayoutDashboard, phase: 0 },
+  { path: "/", label: "الرئيسية", icon: LayoutDashboard, phase: 0 },
   { path: "/pos", label: "الكاشير", icon: ShoppingCart, phase: 2 },
   { path: "/products", label: "المنتجات", icon: Package, phase: 1 },
   { path: "/categories", label: "التصنيفات", icon: Tags, phase: 1 },
