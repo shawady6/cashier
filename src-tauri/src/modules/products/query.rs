@@ -69,6 +69,11 @@ struct ProductRow {
     min_stock_qty: i64,
     is_weighted: bool,
     track_expiry: bool,
+    buy_in_base: bool,
+    sell_in_base: bool,
+    default_buy_big: bool,
+    default_sell_big: bool,
+    price_source: String,
     is_active: bool,
     archived: bool,
     has_image: bool,
@@ -77,7 +82,8 @@ struct ProductRow {
 pub async fn get(pool: &SqlitePool, id: &str) -> Result<ProductDetail, AppError> {
     let row = sqlx::query_as::<_, ProductRow>(
         "SELECT id, sku, name_ar, name_en, category_id, brand_id, base_unit_id, purchase_price, sale_price, \
-                min_stock_qty, is_weighted, track_expiry, is_active, (archived_at IS NOT NULL) AS archived, \
+                min_stock_qty, is_weighted, track_expiry, buy_in_base, sell_in_base, default_buy_big, default_sell_big, \
+                price_source, is_active, (archived_at IS NOT NULL) AS archived, \
                 (image_path IS NOT NULL) AS has_image FROM products WHERE id = ?1",
     )
     .bind(id)
@@ -119,7 +125,7 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<ProductDetail, AppError>
         .collect();
 
     let units = sqlx::query_as::<_, ProductUnitDetail>(
-        "SELECT pu.unit_id, pu.factor_micro, pu.is_purchase_unit, pu.is_sale_unit, pu.sale_price_minor, \
+        "SELECT pu.unit_id, pu.factor_micro, pu.is_purchase_unit, pu.is_sale_unit, pu.sale_price_minor, pu.purchase_price_minor, \
                 (SELECT pb.barcode FROM product_barcodes pb WHERE pb.product_id = pu.product_id AND pb.unit_id = pu.unit_id LIMIT 1) AS barcode \
          FROM product_units pu WHERE pu.product_id = ?1 ORDER BY pu.factor_micro DESC",
     )
@@ -140,6 +146,11 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<ProductDetail, AppError>
         min_stock_qty: r.min_stock_qty,
         is_weighted: r.is_weighted,
         track_expiry: r.track_expiry,
+        buy_in_base: r.buy_in_base,
+        sell_in_base: r.sell_in_base,
+        default_buy_big: r.default_buy_big,
+        default_sell_big: r.default_sell_big,
+        price_source: r.price_source,
         is_active: r.is_active,
         archived: r.archived,
         has_image: r.has_image,
@@ -252,13 +263,21 @@ pub async fn search_sellables(pool: &SqlitePool, query: &str, limit: i64) -> Res
 
     let mut out = Vec::with_capacity(rows.len());
     for r in rows {
-        let mut units: Vec<SellUnit> = vec![SellUnit {
-            unit_id: r.base_unit_id.clone(),
-            name_ar: r.base_unit_name.clone(),
-            factor_micro: 1_000_000,
-            allows_decimal: r.allows_decimal,
-            sale_price_minor: None,
-        }];
+        let (sell_in_base, default_sell_big): (bool, bool) =
+            sqlx::query_as("SELECT sell_in_base, default_sell_big FROM products WHERE id = ?1")
+                .bind(&r.product_id)
+                .fetch_one(pool)
+                .await?;
+        let mut units: Vec<SellUnit> = Vec::new();
+        if sell_in_base {
+            units.push(SellUnit {
+                unit_id: r.base_unit_id.clone(),
+                name_ar: r.base_unit_name.clone(),
+                factor_micro: 1_000_000,
+                allows_decimal: r.allows_decimal,
+                sale_price_minor: None,
+            });
+        }
         units.extend(
             sqlx::query_as::<_, SellUnit>(
                 "SELECT pu.unit_id, u.name_ar, pu.factor_micro, u.allows_decimal, pu.sale_price_minor FROM product_units pu \
@@ -287,10 +306,14 @@ pub async fn search_sellables(pool: &SqlitePool, query: &str, limit: i64) -> Res
         } else {
             None
         };
+        let default_unit_id = match units.iter().find(|u| u.unit_id != r.base_unit_id) {
+            Some(big) if default_sell_big || !sell_in_base => big.unit_id.clone(),
+            _ => r.base_unit_id.clone(),
+        };
         out.push(Sellable {
             product_id: r.product_id, variant_id: r.variant_id, name_ar: r.name_ar, variant_name: r.variant_name,
             sku: r.sku, barcode: r.barcode, sale_price: r.sale_price, stock_qty: r.stock_qty,
-            base_unit_id: r.base_unit_id, base_unit_name: r.base_unit_name, allows_decimal: r.allows_decimal, units, matched_unit_id,
+            base_unit_id: r.base_unit_id, base_unit_name: r.base_unit_name, allows_decimal: r.allows_decimal, units, matched_unit_id, default_unit_id,
         });
     }
     Ok(out)

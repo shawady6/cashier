@@ -15,8 +15,23 @@ pub struct ProductInput {
     pub category_id: Option<String>,
     pub brand_id: Option<String>,
     pub base_unit_id: String,
+    /// سعر شراء القطعة (اختياري): لو فارغ يُحسب من سعر شراء الوحدة الكبيرة.
+    #[serde(default)]
     pub purchase_price: String,
+    /// سعر بيع القطعة يدويًا (اختياري): لو فارغ يُحسب من سعر الوحدة الكبيرة أو الهامش.
+    #[serde(default)]
     pub sale_price: String,
+    /// هامش الربح % على التكلفة، يُستخدم لحساب سعر البيع الناقص فقط.
+    #[serde(default)]
+    pub margin_percent: Option<String>,
+    #[serde(default = "yes")]
+    pub buy_in_base: bool,
+    #[serde(default = "yes")]
+    pub sell_in_base: bool,
+    #[serde(default)]
+    pub default_buy_big: bool,
+    #[serde(default)]
+    pub default_sell_big: bool,
     #[serde(default = "zero")]
     pub min_stock_qty: String,
     #[serde(default)]
@@ -72,6 +87,9 @@ pub struct ProductUnitInput {
     /// باركود الوحدة الكبيرة (اختياري).
     #[serde(default)]
     pub barcode: Option<String>,
+    /// سعر شراء (جملة) الوحدة الكبيرة بالجنيه.
+    #[serde(default)]
+    pub purchase_price: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -124,6 +142,11 @@ pub struct ProductDetail {
     pub min_stock_qty: i64,
     pub is_weighted: bool,
     pub track_expiry: bool,
+    pub buy_in_base: bool,
+    pub sell_in_base: bool,
+    pub default_buy_big: bool,
+    pub default_sell_big: bool,
+    pub price_source: String,
     pub is_active: bool,
     pub archived: bool,
     pub has_image: bool,
@@ -153,6 +176,7 @@ pub struct ProductUnitDetail {
     pub is_purchase_unit: bool,
     pub is_sale_unit: bool,
     pub sale_price_minor: Option<i64>,
+    pub purchase_price_minor: Option<i64>,
     pub barcode: Option<String>,
 }
 
@@ -210,6 +234,8 @@ pub struct Sellable {
     pub units: Vec<SellUnit>,
     /// الوحدة التي طابقها باركود الوحدة الكبيرة (يضيفها الكاشير بهذه الوحدة)
     pub matched_unit_id: Option<String>,
+    /// الوحدة التي يضيف بها الكاشير هذا الصنف عند الاختيار (حسب إعداد المنتج)
+    pub default_unit_id: String,
 }
 
 #[derive(Debug, Serialize, sqlx::FromRow)]

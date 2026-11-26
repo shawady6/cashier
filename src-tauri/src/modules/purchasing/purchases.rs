@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::app_core::error::AppError;
 use crate::app_core::money::{div_round, parse_minor};
 use crate::app_core::quantity::{parse_qty, to_base_qty};
-use crate::modules::inventory::{apply_unit_sale_price, product_info, receive, resolve_unit, warehouses::require_active, MovementRef};
+use crate::modules::inventory::{apply_unit_sale_price, record_unit_purchase_price, product_info, receive, resolve_unit, warehouses::require_active, MovementRef};
 use crate::modules::sales::calc::{allocate, discount_amount, parse_discount};
 use crate::modules::sales::checkout::next_number;
 
@@ -219,6 +219,7 @@ async fn receive_in_tx(conn: &mut SqliteConnection, id: &str) -> Result<(), AppE
         receive(conn, &wh, &pid, vid.as_deref(), base_qty, net, &m).await?;
         // سعر الشراء المرجعي للقطعة = قيمة السطر ÷ القطع (للعرض فقط؛ المخزون يحمل القيمة الكاملة).
         let unit_cost = div_round(i128::from(net) * 1000, i128::from(base_qty)) as i64;
+        record_unit_purchase_price(conn, &pid, &unit_id, net, base_qty).await?;
         if let Some(p) = new_price {
             apply_unit_sale_price(conn, &pid, vid.as_deref(), &unit_id, p).await?;
         }

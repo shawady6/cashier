@@ -25,6 +25,11 @@ fn input(name: &str) -> ProductInput {
         barcodes: vec![],
         variants: vec![],
         units: vec![],
+        margin_percent: None,
+        buy_in_base: true,
+        sell_in_base: true,
+        default_buy_big: false,
+        default_sell_big: false,
     }
 }
 
