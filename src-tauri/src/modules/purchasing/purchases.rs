@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::app_core::error::AppError;
 use crate::app_core::money::{div_round, parse_minor};
 use crate::app_core::quantity::{parse_qty, to_base_qty};
-use crate::modules::inventory::{apply_unit_sale_price, product_info, receive, resolve_unit, warehouses::require_active, MovementRef};
+use crate::modules::inventory::{apply_unit_sale_price, record_unit_purchase_price, product_info, receive, resolve_unit, warehouses::require_active, MovementRef};
 use crate::modules::sales::calc::{allocate, discount_amount, parse_discount};
 use crate::modules::sales::checkout::next_number;
 
@@ -219,6 +219,7 @@ async fn receive_in_tx(conn: &mut SqliteConnection, id: &str) -> Result<(), AppE
         receive(conn, &wh, &pid, vid.as_deref(), base_qty, net, &m).await?;
         // سعر الشراء المرجعي للقطعة = قيمة السطر ÷ القطع (للعرض فقط؛ المخزون يحمل القيمة الكاملة).
         let unit_cost = div_round(i128::from(net) * 1000, i128::from(base_qty)) as i64;
+        record_unit_purchase_price(conn, &pid, &unit_id, net, base_qty).await?;
         if let Some(p) = new_price {
             apply_unit_sale_price(conn, &pid, vid.as_deref(), &unit_id, p).await?;
         }
@@ -293,7 +294,9 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<PurchaseDetail, AppError
     .await?;
     let items = sqlx::query_as::<_, PurchaseItemDetail>(
         "SELECT pi.id, pi.line_no, pi.product_id, pi.variant_id, pi.name_ar, pi.variant_name, pi.unit_id, pi.unit_name, \
-                pi.unit_factor_micro, pi.qty_milli, pi.base_qty_milli, pi.unit_cost_minor, pi.line_total_minor, pi.net_minor, pi.new_sale_price_minor, \
+                pi.unit_factor_micro, pi.qty_milli, pi.base_qty_milli, \
+                (SELECT bu.name_ar FROM products pr JOIN units bu ON bu.id = pr.base_unit_id WHERE pr.id = pi.product_id) AS base_unit_name, \
+                pi.unit_cost_minor, pi.line_total_minor, pi.net_minor, pi.new_sale_price_minor, \
                 COALESCE((SELECT SUM(qty_milli) FROM purchase_return_items WHERE purchase_item_id = pi.id), 0) AS returned_qty_milli \
          FROM purchase_items pi WHERE pi.purchase_id = ?1 ORDER BY pi.line_no",
     )

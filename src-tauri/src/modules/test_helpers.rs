@@ -14,6 +14,7 @@ pub fn base_input(name: &str, purchase: &str, sale: &str) -> ProductInput {
         base_unit_id: PIECE.into(), purchase_price: purchase.into(), sale_price: sale.into(),
         min_stock_qty: "0".into(), is_weighted: false, track_expiry: false, is_active: true,
         barcodes: vec![], variants: vec![], units: vec![],
+        margin_percent: None, buy_in_base: true, sell_in_base: true, default_buy_big: false, default_sell_big: false,
     }
 }
 

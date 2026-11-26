@@ -9,5 +9,7 @@ pub mod suppliers;
 mod tests;
 #[cfg(test)]
 mod big_unit_tests;
+#[cfg(test)]
+mod unit_workflow_tests;
 
 pub use model::*;

@@ -189,8 +189,9 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
     if is_new {
         sqlx::query(
             "INSERT INTO products (id, sku, name_ar, name_en, search_text, category_id, brand_id, base_unit_id, \
-             purchase_price, sale_price, min_stock_qty, is_weighted, track_expiry, is_active) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+             purchase_price, sale_price, min_stock_qty, is_weighted, track_expiry, is_active, \
+             buy_in_base, sell_in_base, default_buy_big, default_sell_big, price_source) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
         )
         .bind(&product_id)
         .bind(&p.sku)
@@ -206,13 +207,19 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .bind(src.is_weighted)
         .bind(src.track_expiry)
         .bind(src.is_active)
+        .bind(src.buy_in_base)
+        .bind(src.sell_in_base)
+        .bind(src.default_buy_big)
+        .bind(src.default_sell_big)
+        .bind(p.price_source)
         .execute(&mut **tx)
         .await?;
     } else {
         sqlx::query(
             "UPDATE products SET sku=?2, name_ar=?3, name_en=?4, search_text=?5, category_id=?6, brand_id=?7, \
              base_unit_id=?8, purchase_price=?9, sale_price=?10, min_stock_qty=?11, is_weighted=?12, \
-             track_expiry=?13, is_active=?14, updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?1",
+             track_expiry=?13, is_active=?14, buy_in_base=?15, sell_in_base=?16, default_buy_big=?17, \
+             default_sell_big=?18, price_source=?19, updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=?1",
         )
         .bind(&product_id)
         .bind(&p.sku)
@@ -228,6 +235,11 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .bind(src.is_weighted)
         .bind(src.track_expiry)
         .bind(src.is_active)
+        .bind(src.buy_in_base)
+        .bind(src.sell_in_base)
+        .bind(src.default_buy_big)
+        .bind(src.default_sell_big)
+        .bind(p.price_source)
         .execute(&mut **tx)
         .await?;
     }
@@ -305,8 +317,8 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .await?;
     for u in &p.units {
         sqlx::query(
-            "INSERT INTO product_units (id, product_id, unit_id, factor_micro, is_purchase_unit, is_sale_unit, sale_price_minor) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            "INSERT INTO product_units (id, product_id, unit_id, factor_micro, is_purchase_unit, is_sale_unit, sale_price_minor, purchase_price_minor) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&product_id)
@@ -315,6 +327,7 @@ async fn save_in_tx(tx: &mut Tx<'_>, p: &Parsed<'_>, flags: &ProfileFlags) -> Re
         .bind(u.src.is_purchase_unit)
         .bind(u.src.is_sale_unit)
         .bind(u.sale_price)
+        .bind(u.purchase_price)
         .execute(&mut **tx)
         .await?;
         if let Some(b) = &u.barcode {

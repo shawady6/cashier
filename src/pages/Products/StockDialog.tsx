@@ -31,7 +31,7 @@ export default function StockDialog({ product, onDone, onClose }: { product: Pro
   const needsVariant = (detail?.variants.filter((v) => v.isActive).length ?? 0) > 0;
   const choices = detail ? buildChoices(detail, units, needsVariant ? variantId : null, false) : [];
   const choice = choices.find((c) => c.unitId === line?.unitId) ?? choices[0];
-  const big = detail?.units[0] ? choices[1] : undefined;
+  const big = choices.find((c) => !c.isBase);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -85,7 +85,6 @@ export default function StockDialog({ product, onDone, onClose }: { product: Pro
         <label className="block text-sm">ملاحظة
           <input className={`${inputClass} mt-1`} value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
-        <p className="text-xs text-slate-500">الرصيد يُحفظ دائمًا بالقطعة. للاستلام من الموردين استخدم فاتورة شراء.</p>
         <div className="flex justify-end gap-2">
           <button type="button" className={btnGhost} onClick={onClose}>إلغاء</button>
           <button type="submit" className={btnPrimary} disabled={busy}>حفظ</button>

@@ -293,7 +293,18 @@ pub async fn resolve_unit(
             };
             Ok(ResolvedUnit { unit_id: uid.to_string(), unit_name: name, factor_micro, allows_decimal: dec, is_base: false })
         }
-        _ => Ok(ResolvedUnit { unit_id: base.0, unit_name: base.1, factor_micro: FACTOR_SCALE, allows_decimal: base.2, is_base: true }),
+        _ => {
+            if purchase_only {
+                let buy_base: bool = sqlx::query_scalar("SELECT buy_in_base FROM products WHERE id = ?1")
+                    .bind(product_id)
+                    .fetch_one(&mut *conn)
+                    .await?;
+                if !buy_base {
+                    return Err(bad("هذا المنتج لا يُشترى بالقطعة، اختر الوحدة الكبيرة"));
+                }
+            }
+            Ok(ResolvedUnit { unit_id: base.0, unit_name: base.1, factor_micro: FACTOR_SCALE, allows_decimal: base.2, is_base: true })
+        }
     }
 }
 
@@ -321,7 +332,7 @@ pub async fn apply_unit_sale_price(
                     .await?;
             }
             None => {
-                sqlx::query("UPDATE products SET sale_price = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1")
+                sqlx::query("UPDATE products SET sale_price = ?2, price_source = 'manual', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1")
                     .bind(product_id)
                     .bind(price_minor)
                     .execute(&mut *conn)
@@ -336,10 +347,73 @@ pub async fn apply_unit_sale_price(
             .bind(price_minor)
             .execute(&mut *conn)
             .await?;
+        // سعر القطعة المحسوب يتبع سعر الوحدة الكبيرة (مقرّبًا لأعلى)؛ اليدوي لا يُمس.
+        let factor: Option<i64> = sqlx::query_scalar("SELECT factor_micro FROM product_units WHERE product_id = ?1 AND unit_id = ?2")
+            .bind(product_id)
+            .bind(unit_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        if let Some(f) = factor {
+            let piece = crate::modules::products::validate::piece_price_from_big(price_minor, f);
+            sqlx::query("UPDATE products SET sale_price = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1 AND price_source = 'derived'")
+                .bind(product_id)
+                .bind(piece)
+                .execute(&mut *conn)
+                .await?;
+        }
         Ok(r.rows_affected() > 0)
     } else {
         Ok(false)
     }
+}
+
+/// آخر سعر شراء للوحدة الكبيرة (يُملأ تلقائيًا في فاتورة الشراء القادمة).
+pub async fn record_unit_purchase_price(
+    conn: &mut SqliteConnection,
+    product_id: &str,
+    unit_id: &str,
+    line_net_minor: i64,
+    base_qty_milli: i64,
+) -> Result<(), AppError> {
+    let factor: Option<i64> = sqlx::query_scalar("SELECT factor_micro FROM product_units WHERE product_id = ?1 AND unit_id = ?2")
+        .bind(product_id)
+        .bind(unit_id)
+        .fetch_optional(&mut *conn)
+        .await?;
+    let Some(f) = factor else { return Ok(()) };
+    // سعر الوحدة = قيمة السطر ÷ عدد الوحدات الكبيرة المشتراة
+    let units_qty_milli = i128::from(base_qty_milli) * 1_000_000 / i128::from(f).max(1);
+    if units_qty_milli <= 0 {
+        return Ok(());
+    }
+    let price = div_round(i128::from(line_net_minor) * 1000, units_qty_milli) as i64;
+    sqlx::query("UPDATE product_units SET purchase_price_minor = ?3 WHERE product_id = ?1 AND unit_id = ?2")
+        .bind(product_id)
+        .bind(unit_id)
+        .bind(price)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
+}
+
+/// رصيد افتتاحي لعدة أصناف دفعة واحدة: كلها في transaction واحدة، وأي خطأ يلغي الكل.
+pub async fn adjust_many(pool: &SqlitePool, inputs: &[AdjustInput]) -> Result<(), AppError> {
+    if inputs.is_empty() {
+        return Err(AppError::Validation("لا توجد أصناف للحفظ".into()));
+    }
+    let mut tx = pool.begin().await?;
+    for (i, input) in inputs.iter().enumerate() {
+        if let Err(e) = adjust_in_tx(&mut tx, input).await {
+            tx.rollback().await?;
+            let msg = match e {
+                AppError::Validation(m) => format!("السطر {}: {m}", i + 1),
+                other => return Err(other),
+            };
+            return Err(AppError::Validation(msg));
+        }
+    }
+    tx.commit().await?;
+    Ok(())
 }
 
 pub async fn adjust(pool: &SqlitePool, input: &AdjustInput) -> Result<(), AppError> {

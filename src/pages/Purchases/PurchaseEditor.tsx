@@ -21,7 +21,7 @@ interface Line {
 let lineCounter = 0;
 
 /** مسودة فاتورة شراء. الحسابات (الإجماليات والخصم) في Rust عند الحفظ والعرض. */
-export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
+export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: (id: string, receiveNow: boolean) => void }) {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [supplierId, setSupplierId] = useState("");
@@ -34,6 +34,7 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
   const [units, setUnits] = useState<Unit[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -61,7 +62,8 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
               det = await api.getProduct(i.productId);
               cache.set(i.productId, det);
             }
-            const choices = buildChoices(det, allUnits, i.variantId, true);
+            let choices = buildChoices(det, allUnits, i.variantId, true);
+            if (!choices.some((x) => x.unitId === i.unitId)) choices = buildChoices(det, allUnits, i.variantId, false);
             const c = choices.find((x) => x.unitId === i.unitId) ?? choices[0];
             const base = lineForChoice(c, milliToInput(i.qtyMilli));
             built.push({
@@ -83,11 +85,11 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
     })();
   }, [id]);
 
-  async function save() {
+  async function save(receiveNow: boolean) {
     setBusy(true);
     setError(null);
     try {
-      await api.savePurchaseDraft({
+      const savedId = await api.savePurchaseDraft({
         id: id ?? undefined,
         supplierId,
         warehouseId,
@@ -109,11 +111,15 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
           };
         }),
       });
-      onSaved();
+      onSaved(savedId, receiveNow);
     } catch (e) {
       setError(String(e));
       setBusy(false);
     }
+  }
+
+  function close() {
+    if (!dirty || window.confirm("في تعديلات لم تُحفظ. تخرج بدونها؟")) onClose();
   }
 
   async function addLine(sel: Sellable) {
@@ -130,60 +136,60 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
   }
 
   return (
-    <Modal title={id ? "تعديل مسودة شراء" : "فاتورة شراء جديدة"} onClose={onClose} wide>
+    <Modal title={id ? "تعديل مسودة شراء" : "فاتورة شراء جديدة"} onClose={close} wide>
       <div className="space-y-3">
         {error && <Alert kind="error">{error}</Alert>}
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm">المورد
-            <select className={`${inputClass} mt-1`} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <select className={`${inputClass} mt-1`} value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setDirty(true); }}>
               {suppliers.length === 0 && <option value="">أضف موردًا أولًا</option>}
               {suppliers.map((s) => <option key={s.id} value={s.id}>{s.nameAr}</option>)}
             </select>
           </label>
           <label className="text-sm">المخزن
-            <select className={`${inputClass} mt-1`} value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)}>
+            <select className={`${inputClass} mt-1`} value={warehouseId} onChange={(e) => { setWarehouseId(e.target.value); setDirty(true); }}>
               {warehouses.map((w) => <option key={w.id} value={w.id}>{w.nameAr}</option>)}
             </select>
           </label>
           <label className="text-sm">رقم فاتورة المورد
-            <input className={`${inputClass} mt-1`} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
+            <input className={`${inputClass} mt-1`} value={invoiceNo} onChange={(e) => { setInvoiceNo(e.target.value); setDirty(true); }} />
           </label>
         </div>
-        <ItemPicker onPick={(sel) => void addLine(sel)} />
+        <ItemPicker onPick={(sel) => { setDirty(true); void addLine(sel); }} />
         <div className="space-y-3">
-          {lines.length === 0 && <p className="p-4 text-center text-sm text-slate-400">ابحث وأضف أصنافًا.</p>}
+          {lines.length === 0 && <p className="p-4 text-center text-sm text-slate-400">لا توجد أصناف بعد.</p>}
           {lines.map((l) => (
             <div key={l.key} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
               <div className="mb-2 flex items-center justify-between text-sm font-semibold">
                 <span>{l.name}</span>
-                <button aria-label="حذف" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><Trash2 size={16} /></button>
+                <button aria-label="حذف" onClick={() => { setDirty(true); setLines((ls) => ls.filter((x) => x.key !== l.key)); }}><Trash2 size={16} /></button>
               </div>
               <UnitLineFields
                 choices={l.choices}
                 value={l.state}
                 isVariant={l.variantId !== null}
-                onChange={(st) => setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, state: st } : x)))}
+                onChange={(st) => { setDirty(true); setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, state: st } : x))); }}
               />
             </div>
           ))}
         </div>
-        <p className="text-xs text-slate-500">الفاتورة تُحفظ دائمًا كمسودة. المخزون والتكلفة وأسعار البيع لا تتغير إلا عند الضغط على «استلام».</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm">خصم الفاتورة
             <div className="mt-1 flex gap-2">
-              <input className={inputClass} dir="ltr" inputMode="decimal" value={discValue} onChange={(e) => setDiscValue(e.target.value)} />
-              <select className={`${inputClass} w-24`} value={discKind} onChange={(e) => setDiscKind(e.target.value as "amount" | "percent")}>
+              <input className={inputClass} dir="ltr" inputMode="decimal" value={discValue} onChange={(e) => { setDiscValue(e.target.value); setDirty(true); }} />
+              <select className={`${inputClass} w-24`} value={discKind} onChange={(e) => { setDiscKind(e.target.value as "amount" | "percent"); setDirty(true); }}>
                 <option value="amount">ج.م</option><option value="percent">%</option>
               </select>
             </div>
           </label>
           <label className="text-sm sm:col-span-2">ملاحظة
-            <input className={`${inputClass} mt-1`} value={note} onChange={(e) => setNote(e.target.value)} />
+            <input className={`${inputClass} mt-1`} value={note} onChange={(e) => { setNote(e.target.value); setDirty(true); }} />
           </label>
         </div>
         <div className="flex justify-end gap-2">
-          <button className={btnGhost} onClick={onClose}>إلغاء</button>
-          <button className={btnPrimary} disabled={busy || !supplierId || lines.length === 0} onClick={save}>حفظ كمسودة</button>
+          <button className={btnGhost} onClick={close}>إلغاء</button>
+          <button className={btnGhost} disabled={busy || !supplierId || lines.length === 0} onClick={() => void save(false)}>حفظ كمسودة</button>
+          <button className={btnPrimary} disabled={busy || !supplierId || lines.length === 0} onClick={() => void save(true)}>حفظ واستلام</button>
         </div>
       </div>
     </Modal>

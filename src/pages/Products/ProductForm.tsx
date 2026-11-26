@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { Controller, useFieldArray, useForm } from "react-hook-form";
 import Alert from "../../components/Alert";
 import { btnGhost, btnPrimary, inputClass } from "../../components/ui";
-import { microToInput, milliToInput, minorToInput } from "../../lib/format";
+import { formatMoney, microToInput, milliToInput, minorToInput } from "../../lib/format";
 import {
   api,
   type BusinessProfile,
   type LookupItem,
+  type PricePreview,
   type ProductInput,
   type Unit,
 } from "../../services/api";
@@ -46,7 +47,8 @@ export default function ProductForm({ productId, profile, categories, brands, un
     handleSubmit,
     reset,
     watch,
-    formState: { errors, isSubmitting },
+    setValue,
+    formState: { errors, isSubmitting, isDirty },
   } = useForm<ProductFormValues>({ resolver: zodResolver(productSchema), defaultValues: emptyProduct(defaultUnit) });
 
   const variants = useFieldArray({ control, name: "variants" });
@@ -57,6 +59,8 @@ export default function ProductForm({ productId, profile, categories, brands, un
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [imageRemoved, setImageRemoved] = useState(false);
 
+  const [editPiece, setEditPiece] = useState(false);
+  const [preview, setPreview] = useState<PricePreview | null>(null);
   const baseUnitId = watch("baseUnitId");
   const baseUnit = units.find((u) => u.id === baseUnitId);
   const canWeigh = !!profile?.allowWeightedProducts;
@@ -76,8 +80,13 @@ export default function ProductForm({ productId, profile, categories, brands, un
           categoryId: p.categoryId ?? "",
           brandId: p.brandId ?? "",
           baseUnitId: p.baseUnitId,
-          purchasePrice: minorToInput(p.purchasePrice),
-          salePrice: minorToInput(p.salePrice),
+          purchasePrice: p.units.length > 0 && p.units[0].purchasePriceMinor != null ? "" : minorToInput(p.purchasePrice),
+          salePrice: p.priceSource === "derived" ? "" : minorToInput(p.salePrice),
+          marginPercent: "",
+          buyInBase: p.buyInBase,
+          sellInBase: p.sellInBase,
+          defaultBuyBig: p.defaultBuyBig,
+          defaultSellBig: p.defaultSellBig,
           minStockQty: milliToInput(p.minStockQty),
           isWeighted: p.isWeighted,
           trackExpiry: p.trackExpiry,
@@ -99,9 +108,11 @@ export default function ProductForm({ productId, profile, categories, brands, un
             isPurchaseUnit: u.isPurchaseUnit,
             isSaleUnit: u.isSaleUnit,
             salePrice: u.salePriceMinor == null ? "" : minorToInput(u.salePriceMinor),
+            purchasePrice: u.purchasePriceMinor == null ? "" : minorToInput(u.purchasePriceMinor),
             barcode: u.barcode ?? "",
           })),
         });
+        setEditPiece(p.priceSource === "manual");
         if (p.hasImage) setImage(await api.getProductImage(productId));
       } catch (e) {
         setError(String(e));
@@ -125,7 +136,12 @@ export default function ProductForm({ productId, profile, categories, brands, un
       brandId: v.brandId || null,
       baseUnitId: v.baseUnitId,
       purchasePrice: v.purchasePrice,
-      salePrice: v.salePrice,
+      salePrice: editPiece || v.units.length === 0 ? v.salePrice : "",
+      marginPercent: v.marginPercent || null,
+      buyInBase: v.buyInBase,
+      sellInBase: v.sellInBase,
+      defaultBuyBig: v.units.length > 0 && v.defaultBuyBig,
+      defaultSellBig: v.units.length > 0 && v.defaultSellBig,
       minStockQty: v.minStockQty || "0",
       isWeighted: v.isWeighted,
       trackExpiry: v.trackExpiry,
@@ -143,6 +159,65 @@ export default function ProductForm({ productId, profile, categories, brands, un
       setError(String(e));
     }
   }
+
+  const bigUnits = watch("units");
+  const hasBig = bigUnits.length > 0;
+  const buyInBase = watch("buyInBase");
+  const sellInBase = watch("sellInBase");
+  const defaultBuyBig = watch("defaultBuyBig");
+  const defaultSellBig = watch("defaultSellBig");
+  const buyBig = hasBig && bigUnits[0].isPurchaseUnit;
+  const sellBig = hasBig && bigUnits[0].isSaleUnit;
+  const pieceSale = watch("salePrice");
+  const pieceCost = watch("purchasePrice");
+  const margin = watch("marginPercent");
+  const big0 = bigUnits[0];
+  const bigName = units.find((u) => u.id === big0?.unitId)?.nameAr ?? "الوحدة الكبيرة";
+  const baseName = baseUnit?.nameAr ?? "قطعة";
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api
+        .previewProductPrices({
+          factor: hasBig ? big0.factor : undefined,
+          pieceSale: editPiece || !hasBig ? pieceSale : "",
+          pieceCost,
+          bigSale: hasBig ? big0.salePrice : undefined,
+          bigPurchase: hasBig ? big0.purchasePrice : undefined,
+          marginPercent: margin,
+        })
+        .then(setPreview)
+        .catch(() => setPreview(null));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [hasBig, big0?.factor, big0?.salePrice, big0?.purchasePrice, pieceSale, pieceCost, margin, editPiece]);
+
+  function setBuy(base: boolean, big: boolean, defBig: boolean) {
+    if (!base && !big) return;
+    setValue("buyInBase", base, { shouldDirty: true });
+    setValue("units.0.isPurchaseUnit", big, { shouldDirty: true });
+    setValue("defaultBuyBig", !base ? true : !big ? false : defBig, { shouldDirty: true });
+  }
+  function setSell(base: boolean, big: boolean, defBig: boolean) {
+    if (!base && !big) return;
+    setValue("sellInBase", base, { shouldDirty: true });
+    setValue("units.0.isSaleUnit", big, { shouldDirty: true });
+    setValue("defaultSellBig", !base ? true : !big ? false : defBig, { shouldDirty: true });
+  }
+  function enableBig(on: boolean) {
+    if (on) {
+      extraUnits.append({ unitId: units.find((u) => u.id !== baseUnitId && u.code === "carton")?.id ?? "", factor: "12", isPurchaseUnit: true, isSaleUnit: true, salePrice: "", purchasePrice: "", barcode: "" });
+      setValue("defaultBuyBig", true, { shouldDirty: true });
+      setValue("defaultSellBig", false, { shouldDirty: true });
+    } else {
+      extraUnits.remove(0);
+      setValue("buyInBase", true);
+      setValue("sellInBase", true);
+      setValue("defaultBuyBig", false);
+      setValue("defaultSellBig", false);
+    }
+  }
+  const money = (v: number | null | undefined) => (v == null ? "—" : formatMoney(v));
 
   if (loading) return <p className="py-8 text-center text-sm text-slate-500">جارٍ التحميل…</p>;
 
@@ -189,18 +264,112 @@ export default function ProductForm({ productId, profile, categories, brands, un
       </section>
 
       <section className={sectionClass}>
-        <h4 className="font-semibold">الأسعار والمخزون</h4>
+        <h4 className="font-semibold">الشراء والبيع</h4>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={hasBig} onChange={(e) => enableBig(e.target.checked)} /> له وحدة كبيرة (كرتونة، دستة، علبة…)
+        </label>
+        {hasBig && (
+          <div className="grid gap-3 md:grid-cols-[1fr_8rem_1fr]">
+            <Field label="الوحدة الكبيرة" error={errors.units?.[0]?.unitId?.message}>
+              <select className={inputClass} {...register("units.0.unitId")}>
+                <option value="">اختر…</option>
+                {units.filter((u) => (u.id !== baseUnitId && ["carton", "dozen", "box", "pack"].includes(u.code)) || u.id === big0.unitId).map((u) => (
+                  <option key={u.id} value={u.id}>{u.nameAr}</option>
+                ))}
+              </select>
+            </Field>
+            <Field label={`عدد ${baseName} فيها`} error={errors.units?.[0]?.factor?.message}>
+              <input inputMode="numeric" className={inputClass} {...register("units.0.factor")} />
+            </Field>
+            <Field label="باركود الوحدة الكبيرة">
+              <input className={inputClass} dir="ltr" {...register("units.0.barcode")} />
+            </Field>
+          </div>
+        )}
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <fieldset className="space-y-1 text-sm">
+            <legend className="font-medium">بتشتري بـ</legend>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={buyInBase} onChange={(e) => setBuy(e.target.checked, buyBig, defaultBuyBig)} /> {baseName}
+            </label>
+            {hasBig && (
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={buyBig} onChange={(e) => setBuy(buyInBase, e.target.checked, defaultBuyBig)} /> {bigName}
+              </label>
+            )}
+            {buyInBase && buyBig && (
+              <div className="flex items-center gap-3 pt-1 text-xs text-slate-600 dark:text-slate-300">
+                الافتراضي:
+                <label className="flex items-center gap-1"><input type="radio" checked={!defaultBuyBig} onChange={() => setBuy(true, true, false)} /> {baseName}</label>
+                <label className="flex items-center gap-1"><input type="radio" checked={defaultBuyBig} onChange={() => setBuy(true, true, true)} /> {bigName}</label>
+              </div>
+            )}
+          </fieldset>
+          <fieldset className="space-y-1 text-sm">
+            <legend className="font-medium">بتبيع بـ</legend>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={sellInBase} onChange={(e) => setSell(e.target.checked, sellBig, defaultSellBig)} /> {baseName}
+            </label>
+            {hasBig && (
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={sellBig} onChange={(e) => setSell(sellInBase, e.target.checked, defaultSellBig)} /> {bigName}
+              </label>
+            )}
+            {sellInBase && sellBig && (
+              <div className="flex items-center gap-3 pt-1 text-xs text-slate-600 dark:text-slate-300">
+                الافتراضي:
+                <label className="flex items-center gap-1"><input type="radio" checked={!defaultSellBig} onChange={() => setSell(true, true, false)} /> {baseName}</label>
+                <label className="flex items-center gap-1"><input type="radio" checked={defaultSellBig} onChange={() => setSell(true, true, true)} /> {bigName}</label>
+              </div>
+            )}
+          </fieldset>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-4">
+          {hasBig && (
+            <Field label={`سعر شراء ${bigName} (جملة)`} error={errors.units?.[0]?.purchasePrice?.message}>
+              <input inputMode="decimal" className={inputClass} {...register("units.0.purchasePrice")} />
+            </Field>
+          )}
+          {hasBig && (
+            <Field label={`سعر بيع ${bigName}`} error={errors.units?.[0]?.salePrice?.message}>
+              <input inputMode="decimal" className={inputClass} {...register("units.0.salePrice")} />
+            </Field>
+          )}
+          {(!hasBig || buyInBase) && (
+            <Field label={`سعر شراء ${baseName}`} error={errors.purchasePrice?.message}>
+              <input inputMode="decimal" className={inputClass} {...register("purchasePrice")} />
+            </Field>
+          )}
+          <Field label="هامش الربح %" error={errors.marginPercent?.message}>
+            <input inputMode="decimal" className={inputClass} {...register("marginPercent")} />
+          </Field>
+        </div>
+
+        <div className="rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-900/40">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div>
+              سعر بيع {baseName}:{" "}
+              {editPiece || !hasBig ? (
+                <input inputMode="decimal" aria-label="سعر بيع القطعة" className={`${inputClass} !inline-block !w-28`} {...register("salePrice")} />
+              ) : (
+                <strong>{money(preview?.piecePrice)}</strong>
+              )}
+              {hasBig && (
+                <button type="button" className="ms-2 text-xs text-sky-700 underline dark:text-sky-300" onClick={() => { setEditPiece(!editPiece); if (editPiece) setValue("salePrice", ""); }}>
+                  {editPiece ? "حساب تلقائي" : "تعديل"}
+                </button>
+              )}
+            </div>
+            {hasBig && <div>تكلفة {baseName}: <strong>{money(preview?.pieceCost)}</strong></div>}
+            {hasBig && sellBig && preview?.bigSale != null && <div>سعر بيع {bigName}: <strong>{money(preview.bigSale)}</strong></div>}
+          </div>
+          {errors.salePrice?.message && <span role="alert" className="text-xs text-red-600">{errors.salePrice.message}</span>}
+        </div>
+
         <div className="grid gap-3 md:grid-cols-3">
-          <Field label="سعر الشراء (جنيه) *" error={errors.purchasePrice?.message}>
-            <input inputMode="decimal" className={inputClass} {...register("purchasePrice")} />
-          </Field>
-          <Field label="سعر البيع (جنيه) *" error={errors.salePrice?.message}>
-            <input inputMode="decimal" className={inputClass} {...register("salePrice")} />
-          </Field>
-          <Field
-            label={`حد إعادة الطلب (${baseUnit?.nameAr ?? ""})`}
-            error={errors.minStockQty?.message}
-          >
+          <Field label={`حد إعادة الطلب (${baseName})`} error={errors.minStockQty?.message}>
             <input inputMode="decimal" className={inputClass} {...register("minStockQty")} />
           </Field>
         </div>
@@ -224,48 +393,6 @@ export default function ProductForm({ productId, profile, categories, brands, un
       <section className={sectionClass}>
         <h4 className="font-semibold">الباركود</h4>
         <Controller control={control} name="barcodes" render={({ field }) => <BarcodeInput value={field.value} onChange={field.onChange} />} />
-      </section>
-
-      <section className={sectionClass}>
-        <div className="flex items-center justify-between">
-          <h4 className="font-semibold">الوحدة الكبيرة (كرتونة، دستة…)</h4>
-          {extraUnits.fields.length === 0 && (
-            <button type="button" className={btnGhost} onClick={() => extraUnits.append({ unitId: "", factor: "12", isPurchaseUnit: true, isSaleUnit: true, salePrice: "", barcode: "" })}>
-              <Plus size={14} /> إضافة وحدة كبيرة
-            </button>
-          )}
-        </div>
-        {extraUnits.fields.length === 0 && <p className="text-xs text-slate-500">اختيارية. المخزون يُحفظ دائمًا بالقطعة، والوحدة الكبيرة للشراء والبيع فقط.</p>}
-        {extraUnits.fields.map((f, i) => {
-          const pieceSale = Number((watch("salePrice") || "0").replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[,٫]/g, "."));
-          const count = Number((watch(`units.${i}.factor`) || "0").replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))));
-          const hint = Number.isFinite(pieceSale) && count >= 2 ? (Math.round(pieceSale * 100 * count) / 100).toFixed(2) : "";
-          return (
-            <div key={f.id} className="grid items-end gap-2 md:grid-cols-[1fr_8rem_1fr_1fr_auto]">
-              <Field label="الوحدة الكبيرة" error={errors.units?.[i]?.unitId?.message}>
-                <select className={inputClass} {...register(`units.${i}.unitId`)}>
-                  <option value="">اختر…</option>
-                  {units.filter((u) => u.id !== baseUnitId && ["carton", "dozen", "box", "pack"].includes(u.code) || u.id === f.unitId).map((u) => (
-                    <option key={u.id} value={u.id}>{u.nameAr}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label={`عدد ${baseUnit?.nameAr ?? "القطع"} فيها`} error={errors.units?.[i]?.factor?.message}>
-                <input inputMode="numeric" className={inputClass} {...register(`units.${i}.factor`)} />
-              </Field>
-              <Field label="سعر بيع الوحدة الكبيرة" error={errors.units?.[i]?.salePrice?.message}>
-                <input inputMode="decimal" className={inputClass} placeholder={hint ? `اقتراح: ${hint}` : "اختياري"} {...register(`units.${i}.salePrice`)} />
-              </Field>
-              <Field label="باركود الوحدة الكبيرة (اختياري)">
-                <input className={inputClass} dir="ltr" {...register(`units.${i}.barcode`)} />
-              </Field>
-              <button type="button" aria-label="حذف الوحدة الكبيرة" className={`${btnGhost} mb-0.5 text-red-600`} onClick={() => extraUnits.remove(i)}>
-                <Trash2 size={14} />
-              </button>
-            </div>
-          );
-        })}
-        {extraUnits.fields.length > 0 && <p className="text-xs text-slate-500">لو تركت السعر فارغًا يُحسب سعر القطعة × العدد.</p>}
       </section>
 
       {(canVariants || variants.fields.length > 0) && (
@@ -316,7 +443,7 @@ export default function ProductForm({ productId, profile, categories, brands, un
       </section>
 
       <div className="flex justify-end gap-2">
-        <button type="button" className={btnGhost} onClick={onCancel}>إلغاء</button>
+        <button type="button" className={btnGhost} onClick={() => { if (!isDirty || window.confirm("في تعديلات لم تُحفظ. تخرج بدونها؟")) onCancel(); }}>إلغاء</button>
         <button type="submit" className={btnPrimary} disabled={isSubmitting}>
           {isSubmitting ? "جارٍ الحفظ…" : "حفظ المنتج"}
         </button>

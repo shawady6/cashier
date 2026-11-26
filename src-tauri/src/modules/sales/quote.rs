@@ -104,7 +104,16 @@ pub async fn quote(conn: &mut SqliteConnection, input: &CartInput) -> Result<Car
                 let Some((f, n, d, o)) = u else { return bad("وحدة البيع غير مسموحة لهذا المنتج") };
                 (uid.clone(), n, f, d, o)
             }
-            _ => (p.base_unit_id.clone(), p.base_unit_name.clone(), FACTOR_SCALE, p.base_allows_decimal, None),
+            _ => {
+                let sell_base: bool = sqlx::query_scalar("SELECT sell_in_base FROM products WHERE id = ?1")
+                    .bind(&item.product_id)
+                    .fetch_one(&mut *conn)
+                    .await?;
+                if !sell_base {
+                    return bad(format!("«{}» لا يُباع بالقطعة، اختر الوحدة الكبيرة", p.name_ar));
+                }
+                (p.base_unit_id.clone(), p.base_unit_name.clone(), FACTOR_SCALE, p.base_allows_decimal, None)
+            }
         };
 
         let qty = parse_qty(&item.qty, allows_decimal)?;

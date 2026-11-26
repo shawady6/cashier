@@ -252,7 +252,7 @@ async fn big_unit_barcode_is_unique_and_matches_the_unit() {
     let mut i = base_input("حليب", "10", "15");
     i.units = vec![ProductUnitInput {
         unit_id: CARTON.into(), factor: "24".into(), is_purchase_unit: true, is_sale_unit: true,
-        sale_price: Some("330".into()), barcode: Some("6220001".into()),
+        sale_price: Some("330".into()), barcode: Some("6220001".into()), ..Default::default()
     }];
     let id = products::save(&pool, &i).await.unwrap();
     let hits = products::search_sellables(&pool, "6220001", 10).await.unwrap();
@@ -265,7 +265,7 @@ async fn big_unit_barcode_is_unique_and_matches_the_unit() {
     assert_eq!(d.units[0].barcode.as_deref(), Some("6220001"));
     assert_eq!(d.units[0].sale_price_minor, Some(33_000));
     // الحفظ مرة ثانية يحافظ عليه، ومنتج آخر لا يستطيع استخدامه
-    products::save(&pool, &{ let mut j = base_input("حليب", "10", "15"); j.id = Some(id.clone()); j.units = vec![ProductUnitInput { unit_id: CARTON.into(), factor: "24".into(), is_purchase_unit: true, is_sale_unit: true, sale_price: Some("330".into()), barcode: Some("6220001".into()) }]; j }).await.unwrap();
+    products::save(&pool, &{ let mut j = base_input("حليب", "10", "15"); j.id = Some(id.clone()); j.units = vec![ProductUnitInput { unit_id: CARTON.into(), factor: "24".into(), is_purchase_unit: true, is_sale_unit: true, sale_price: Some("330".into()), barcode: Some("6220001".into()), ..Default::default() }]; j }).await.unwrap();
     let mut other = base_input("لبن", "10", "15");
     other.barcodes = vec!["6220001".into()];
     assert!(products::save(&pool, &other).await.is_err());

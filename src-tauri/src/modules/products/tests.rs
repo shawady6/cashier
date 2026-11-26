@@ -25,6 +25,11 @@ fn input(name: &str) -> ProductInput {
         barcodes: vec![],
         variants: vec![],
         units: vec![],
+        margin_percent: None,
+        buy_in_base: true,
+        sell_in_base: true,
+        default_buy_big: false,
+        default_sell_big: false,
     }
 }
 
@@ -322,4 +327,15 @@ async fn sellable_search_hides_archived_and_expands_variants() {
 
     set_archived(&pool, &plain, true).await.unwrap();
     assert_eq!(search_sellables(&pool, "", 50).await.unwrap().len(), 2);
+}
+
+#[test]
+fn price_preview_matches_saving_rules_and_tolerates_bad_input() {
+    use super::validate::{preview_prices, PricePreviewInput};
+    let p = preview_prices(&PricePreviewInput { factor: Some("12".into()), big_sale: Some("100".into()), big_purchase: Some("90".into()), ..Default::default() });
+    assert_eq!((p.piece_price, p.piece_cost, p.big_sale, p.source.as_deref()), (Some(834), Some(750), Some(10_000), Some("derived")));
+    let m = preview_prices(&PricePreviewInput { factor: Some("12".into()), big_purchase: Some("90".into()), margin_percent: Some("15".into()), ..Default::default() });
+    assert_eq!((m.piece_price, m.big_sale), (Some(863), Some(10_350)));
+    let bad = preview_prices(&PricePreviewInput { factor: Some("abc".into()), big_sale: Some("x".into()), ..Default::default() });
+    assert!(bad.piece_price.is_none());
 }

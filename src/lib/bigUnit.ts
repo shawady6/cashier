@@ -9,6 +9,8 @@ export interface UnitChoice {
   /** عدد القطع الافتراضي في الوحدة (1 للقطعة) */
   factor: number;
   isBase: boolean;
+  /** اسم الوحدة الأساسية (القطعة) */
+  baseName: string;
   /** تكلفة الوحدة المقترحة بالقروش */
   defaultCostMinor: number;
   /** سعر بيع الوحدة الحالي/المقترح بالقروش */
@@ -26,12 +28,16 @@ export interface UnitLineState {
   origSalePrice: string;
 }
 
+/** الوحدات المتاحة للسطر: الافتراضية أولًا. في الشراء تُحترم خيارات "بتشتري بـ". */
 export function buildChoices(detail: ProductDetail, units: Unit[], variantId: string | null, purchaseOnly: boolean): UnitChoice[] {
   const v = variantId ? detail.variants.find((x) => x.id === variantId) : undefined;
   const baseCost = v ? v.purchasePrice : detail.purchasePrice;
   const baseSale = v ? v.salePrice : detail.salePrice;
   const baseName = units.find((u) => u.id === detail.baseUnitId)?.nameAr ?? "قطعة";
-  const out: UnitChoice[] = [{ unitId: detail.baseUnitId, nameAr: baseName, factor: 1, isBase: true, defaultCostMinor: baseCost, defaultSaleMinor: baseSale }];
+  const out: UnitChoice[] = [];
+  if (!purchaseOnly || detail.buyInBase) {
+    out.push({ unitId: detail.baseUnitId, nameAr: baseName, factor: 1, isBase: true, baseName, defaultCostMinor: baseCost, defaultSaleMinor: baseSale });
+  }
   for (const u of detail.units) {
     if (purchaseOnly && !u.isPurchaseUnit) continue;
     const factor = u.factorMicro / 1_000_000;
@@ -40,10 +46,12 @@ export function buildChoices(detail: ProductDetail, units: Unit[], variantId: st
       nameAr: units.find((x) => x.id === u.unitId)?.nameAr ?? "وحدة",
       factor,
       isBase: false,
-      defaultCostMinor: baseCost * factor,
-      defaultSaleMinor: !v && u.salePriceMinor != null ? u.salePriceMinor : baseSale * factor,
+      baseName,
+      defaultCostMinor: u.purchasePriceMinor ?? Math.round(baseCost * factor),
+      defaultSaleMinor: !v && u.salePriceMinor != null ? u.salePriceMinor : Math.round(baseSale * factor),
     });
   }
+  if (detail.defaultBuyBig) out.sort((a, b) => Number(a.isBase) - Number(b.isBase));
   return out;
 }
 

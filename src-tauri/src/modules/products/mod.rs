@@ -4,7 +4,7 @@ pub mod images;
 pub mod model;
 pub mod query;
 pub mod repo;
-mod validate;
+pub mod validate;
 
 #[cfg(test)]
 mod tests;
