@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous};
 use sqlx::SqlitePool;
 
@@ -19,18 +20,87 @@ pub fn connect_options(path: &Path) -> SqliteConnectOptions {
         .busy_timeout(Duration::from_secs(5))
 }
 
+static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+
+/// عدد نسخ ما قبل التحديث المحفوظة؛ الأقدم تُحذف.
+const KEEP_PRE_MIGRATION_BACKUPS: usize = 5;
+
 pub async fn init(path: &Path) -> Result<SqlitePool, AppError> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect_with(connect_options(path))
         .await?;
+    backup_before_migrate(&pool, path).await?;
     migrate(&pool).await?;
     Ok(pool)
 }
 
+/// قبل تطبيق أي تحديث بنية على قاعدة فيها بيانات، تُحفظ نسخة كاملة سليمة بجوارها
+/// (VACUUM INTO وليس نسخ ملف شغّال). فشل النسخة يوقف التحديث ولا تُمس البيانات.
+pub async fn backup_before_migrate(pool: &SqlitePool, db_path: &Path) -> Result<Option<std::path::PathBuf>, AppError> {
+    let has_table: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_sqlx_migrations'")
+        .fetch_one(pool)
+        .await?;
+    if has_table == 0 {
+        return Ok(None); // قاعدة جديدة: لا بيانات تُحمى
+    }
+    let applied: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM _sqlx_migrations WHERE success = 1")
+        .fetch_one(pool)
+        .await?;
+    let total = MIGRATOR.iter().count() as i64;
+    if applied >= total {
+        return Ok(None); // محدّثة بالفعل
+    }
+    let dir = db_path
+        .parent()
+        .ok_or_else(|| AppError::Internal("مسار قاعدة البيانات غير صالح".into()))?
+        .join("backups");
+    std::fs::create_dir_all(&dir)?;
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let target = dir.join(format!("pre-migration-{secs:012}-v{applied}.db"));
+    if target.exists() {
+        std::fs::remove_file(&target)?;
+    }
+    sqlx::query("VACUUM INTO ?1")
+        .bind(target.to_string_lossy().to_string())
+        .execute(pool)
+        .await
+        .map_err(|e| AppError::Internal(format!("تعذر حفظ نسخة احتياطية قبل التحديث، لم يتم تغيير أي بيانات: {e}")))?;
+
+    // تحقق أن النسخة سليمة قبل السماح بالتحديث.
+    let check = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(SqliteConnectOptions::new().filename(&target).read_only(true))
+        .await?;
+    let verdict: String = sqlx::query_scalar("PRAGMA integrity_check").fetch_one(&check).await?;
+    check.close().await;
+    if verdict != "ok" {
+        let _ = std::fs::remove_file(&target);
+        return Err(AppError::Internal("النسخة الاحتياطية قبل التحديث غير سليمة، تم إيقاف التحديث".into()));
+    }
+    prune_old_backups(&dir);
+    Ok(Some(target))
+}
+
+fn prune_old_backups(dir: &Path) {
+    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let mut files: Vec<_> = rd
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with("pre-migration-"))
+        .map(|e| e.path())
+        .collect();
+    files.sort();
+    while files.len() > KEEP_PRE_MIGRATION_BACKUPS {
+        let _ = std::fs::remove_file(files.remove(0));
+    }
+}
+
 /// تطبيق تحديثات البنية. لا تحذف بيانات ولا تعيد ضبط القاعدة.
 pub async fn migrate(pool: &SqlitePool) -> Result<(), AppError> {
-    sqlx::migrate!("./migrations").run(pool).await?;
+    MIGRATOR.run(pool).await?;
     Ok(())
 }
 
@@ -130,5 +200,53 @@ mod tests {
         assert_eq!(sale, 1500);
         // العمود الجديد في بنود الشراء موجود
         sqlx::query("SELECT new_sale_price_minor FROM purchase_items").fetch_all(&pool).await.unwrap();
+    }
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("pos-test-{tag}-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// قاعدة جديدة: لا نسخة احتياطية. ثم قاعدة قديمة فيها بيانات: نسخة سليمة بنفس البيانات قبل التحديث.
+    #[tokio::test]
+    async fn pre_migration_backup_only_when_pending_and_is_valid() {
+        use sqlx::sqlite::SqlitePoolOptions;
+        let dir = temp_dir("bk");
+        let db = dir.join("pos.db");
+
+        // أول تشغيل: بدون نسخة
+        let pool = super::init(&db).await.unwrap();
+        assert!(!dir.join("backups").exists());
+        pool.close().await;
+
+        // تشغيل ثانٍ والقاعدة محدّثة: بدون نسخة
+        let pool = super::init(&db).await.unwrap();
+        assert!(!dir.join("backups").exists());
+        // نحاكي قاعدة قديمة: نحذف سجل آخر migration ونضيف بيانات
+        sqlx::query("INSERT INTO products (id, name_ar, base_unit_id, sale_price) VALUES ('p1','قديم','b4d2e2e3-7c1f-4a7b-8e45-2e7b9e1a0001',1500)").execute(&pool).await.unwrap();
+        sqlx::query("DELETE FROM _sqlx_migrations WHERE version = (SELECT MAX(version) FROM _sqlx_migrations)").execute(&pool).await.unwrap();
+        let made = super::backup_before_migrate(&pool, &db).await.unwrap().expect("نسخة مطلوبة");
+        pool.close().await;
+
+        let bk = SqlitePoolOptions::new().max_connections(1)
+            .connect_with(sqlx::sqlite::SqliteConnectOptions::new().filename(&made).read_only(true)).await.unwrap();
+        let price: i64 = sqlx::query_scalar("SELECT sale_price FROM products WHERE id='p1'").fetch_one(&bk).await.unwrap();
+        assert_eq!(price, 1500);
+        bk.close().await;
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn old_backups_are_pruned_to_five() {
+        let dir = temp_dir("prune");
+        for i in 0..8 {
+            std::fs::write(dir.join(format!("pre-migration-{i:012}-v1.db")), b"x").unwrap();
+        }
+        super::prune_old_backups(&dir);
+        let left = std::fs::read_dir(&dir).unwrap().count();
+        assert_eq!(left, 5);
+        assert!(!dir.join("pre-migration-000000000000-v1.db").exists());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
