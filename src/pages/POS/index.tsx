@@ -4,7 +4,7 @@ import Alert from "../../components/Alert";
 import Modal from "../../components/Modal";
 import ReceiptDialog from "../../components/ReceiptDialog";
 import { btnGhost, btnPrimary, cardClass, inputClass } from "../../components/ui";
-import { formatMoney, formatQty } from "../../lib/format";
+import { formatBigUnitStock, formatMoney, formatQty } from "../../lib/format";
 import { parseShortcuts } from "../../lib/shortcuts";
 import { stepQty } from "../../lib/qty";
 import { api, type CheckoutResult } from "../../services/api";
@@ -112,7 +112,7 @@ export default function PosPage() {
                   >
                     <td className="px-3 py-2">
                       <div className="font-medium">{l.sellable.nameAr}{l.sellable.variantName ? ` - ${l.sellable.variantName}` : ""}</div>
-                      <div className="text-xs text-slate-500">المتاح: {formatQty(l.sellable.stockQty)} {l.sellable.baseUnitName}</div>
+                      <div className="text-xs text-slate-500">المتاح: {formatQty(l.sellable.stockQty)} {l.sellable.baseUnitName}{formatBigUnitStock(l.sellable.stockQty, l.sellable.units[1], l.sellable.baseUnitName) ? ` (${formatBigUnitStock(l.sellable.stockQty, l.sellable.units[1], l.sellable.baseUnitName)})` : ""}</div>
                     </td>
                     <td className="px-3 py-2">
                       {l.sellable.units.length > 1 ? (

@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::app_core::error::AppError;
 use crate::app_core::money::{div_round, parse_minor};
-use crate::app_core::quantity::{parse_qty, to_base_qty, FACTOR_SCALE};
-use crate::modules::inventory::{product_info, receive, warehouses::require_active, MovementRef};
+use crate::app_core::quantity::{parse_qty, to_base_qty};
+use crate::modules::inventory::{apply_unit_sale_price, product_info, receive, resolve_unit, warehouses::require_active, MovementRef};
 use crate::modules::sales::calc::{allocate, discount_amount, parse_discount};
 use crate::modules::sales::checkout::next_number;
 
@@ -31,6 +31,7 @@ struct Line {
     base_qty: i64,
     unit_cost: i64,
     line_total: i64,
+    new_sale_price: Option<i64>,
 }
 
 pub async fn save_draft(pool: &SqlitePool, input: &PurchaseInput) -> Result<String, AppError> {
@@ -71,27 +72,8 @@ async fn save_in_tx(conn: &mut SqliteConnection, input: &PurchaseInput) -> Resul
     let mut lines = Vec::new();
     for it in &input.items {
         let info = product_info(conn, &it.product_id, it.variant_id.as_deref()).await?;
-        let base_unit: (String, String) = sqlx::query_as(
-            "SELECT p.base_unit_id, u.name_ar FROM products p JOIN units u ON u.id = p.base_unit_id WHERE p.id = ?1",
-        )
-        .bind(&it.product_id)
-        .fetch_one(&mut *conn)
-        .await?;
-        let (unit_id, unit_name, factor, allows_decimal) = match &it.unit_id {
-            Some(uid) if *uid != base_unit.0 => {
-                let u: Option<(i64, String, bool)> = sqlx::query_as(
-                    "SELECT pu.factor_micro, u.name_ar, u.allows_decimal FROM product_units pu JOIN units u ON u.id = pu.unit_id \
-                     WHERE pu.product_id = ?1 AND pu.unit_id = ?2 AND pu.is_purchase_unit = 1",
-                )
-                .bind(&it.product_id)
-                .bind(uid)
-                .fetch_optional(&mut *conn)
-                .await?;
-                let Some((f, n, d)) = u else { return bad("وحدة الشراء غير مسموحة لهذا المنتج") };
-                (uid.clone(), n, f, d)
-            }
-            _ => (base_unit.0.clone(), base_unit.1.clone(), FACTOR_SCALE, info.allows_decimal),
-        };
+        let ru = resolve_unit(conn, &it.product_id, it.unit_id.as_deref(), it.factor.as_deref(), true).await?;
+        let (unit_id, unit_name, factor, allows_decimal) = (ru.unit_id, ru.unit_name, ru.factor_micro, ru.allows_decimal);
         let qty = parse_qty(&it.qty, allows_decimal)?;
         if qty <= 0 {
             return bad(format!("كمية «{}» يجب أن تكون أكبر من صفر", info.name));
@@ -101,10 +83,15 @@ async fn save_in_tx(conn: &mut SqliteConnection, input: &PurchaseInput) -> Resul
             return bad("الكمية صغيرة جدًا بعد تحويل الوحدة");
         }
         let unit_cost = parse_minor(&it.unit_cost)?;
+        // إجمالي السطر = تكلفة الوحدة × الكمية. هو أصل حساب التكلفة، فلا يحدث تقريب لكل قطعة.
         let line_total = div_round(i128::from(unit_cost) * i128::from(qty), 1000) as i64;
+        let new_sale_price = match it.sale_price.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => Some(parse_minor(p)?),
+            _ => None,
+        };
         lines.push(Line {
             product_id: it.product_id.clone(), variant_id: it.variant_id.clone(), name_ar: info.name,
-            variant_name: info.variant_name, unit_id, unit_name, factor, qty, base_qty, unit_cost, line_total,
+            variant_name: info.variant_name, unit_id, unit_name, factor, qty, base_qty, unit_cost, line_total, new_sale_price,
         });
     }
 
@@ -166,8 +153,8 @@ async fn save_in_tx(conn: &mut SqliteConnection, input: &PurchaseInput) -> Resul
     for (i, (l, alloc)) in lines.iter().zip(&nets).enumerate() {
         sqlx::query(
             "INSERT INTO purchase_items (id, purchase_id, line_no, product_id, variant_id, name_ar, variant_name, unit_id, unit_name, \
-             unit_factor_micro, qty_milli, base_qty_milli, unit_cost_minor, line_total_minor, net_minor) \
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
+             unit_factor_micro, qty_milli, base_qty_milli, unit_cost_minor, line_total_minor, net_minor, new_sale_price_minor) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
         )
         .bind(Uuid::new_v4().to_string())
         .bind(&id)
@@ -184,6 +171,7 @@ async fn save_in_tx(conn: &mut SqliteConnection, input: &PurchaseInput) -> Resul
         .bind(l.unit_cost)
         .bind(l.line_total)
         .bind(l.line_total - alloc)
+        .bind(l.new_sale_price)
         .execute(&mut *conn)
         .await?;
     }
@@ -216,8 +204,9 @@ async fn receive_in_tx(conn: &mut SqliteConnection, id: &str) -> Result<(), AppE
         return bad("هذه الفاتورة تم استلامها أو إلغاؤها بالفعل");
     }
     require_active(conn, &wh).await?;
-    let items: Vec<(String, Option<String>, i64, i64)> = sqlx::query_as(
-        "SELECT product_id, variant_id, base_qty_milli, net_minor FROM purchase_items WHERE purchase_id = ?1 ORDER BY line_no",
+    let items: Vec<(String, Option<String>, i64, i64, String, Option<i64>)> = sqlx::query_as(
+        "SELECT product_id, variant_id, base_qty_milli, net_minor, unit_id, new_sale_price_minor \
+         FROM purchase_items WHERE purchase_id = ?1 ORDER BY line_no",
     )
     .bind(id)
     .fetch_all(&mut *conn)
@@ -225,10 +214,14 @@ async fn receive_in_tx(conn: &mut SqliteConnection, id: &str) -> Result<(), AppE
     if items.is_empty() {
         return bad("الفاتورة بلا بنود");
     }
-    for (pid, vid, base_qty, net) in items {
+    for (pid, vid, base_qty, net, unit_id, new_price) in items {
         let m = MovementRef { movement_type: "purchase", ref_type: "purchase", ref_id: id, note: "" };
         receive(conn, &wh, &pid, vid.as_deref(), base_qty, net, &m).await?;
+        // سعر الشراء المرجعي للقطعة = قيمة السطر ÷ القطع (للعرض فقط؛ المخزون يحمل القيمة الكاملة).
         let unit_cost = div_round(i128::from(net) * 1000, i128::from(base_qty)) as i64;
+        if let Some(p) = new_price {
+            apply_unit_sale_price(conn, &pid, vid.as_deref(), &unit_id, p).await?;
+        }
         match &vid {
             Some(v) => {
                 sqlx::query("UPDATE product_variants SET purchase_price = ?2 WHERE id = ?1").bind(v).bind(unit_cost).execute(&mut *conn).await?;
@@ -300,7 +293,7 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<PurchaseDetail, AppError
     .await?;
     let items = sqlx::query_as::<_, PurchaseItemDetail>(
         "SELECT pi.id, pi.line_no, pi.product_id, pi.variant_id, pi.name_ar, pi.variant_name, pi.unit_id, pi.unit_name, \
-                pi.qty_milli, pi.unit_cost_minor, pi.line_total_minor, pi.net_minor, \
+                pi.unit_factor_micro, pi.qty_milli, pi.base_qty_milli, pi.unit_cost_minor, pi.line_total_minor, pi.net_minor, pi.new_sale_price_minor, \
                 COALESCE((SELECT SUM(qty_milli) FROM purchase_return_items WHERE purchase_item_id = pi.id), 0) AS returned_qty_milli \
          FROM purchase_items pi WHERE pi.purchase_id = ?1 ORDER BY pi.line_no",
     )

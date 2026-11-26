@@ -103,7 +103,7 @@ async fn stock_count_applies_difference_to_current_balance() {
     // أثناء الجرد: تُباع قطعتان من (أ)
     crate::modules::inventory::adjust(
         &pool,
-        &crate::modules::inventory::AdjustInput { product_id: a.clone(), variant_id: None, direction: "decrease".into(), qty: "2".into(), unit_cost: None, note: String::new() },
+        &crate::modules::inventory::AdjustInput { product_id: a.clone(), variant_id: None, direction: "decrease".into(), qty: "2".into(), unit_cost: None, note: String::new(), ..Default::default() },
     )
     .await
     .unwrap();

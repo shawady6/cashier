@@ -57,8 +57,9 @@ export function useCart() {
 
   const add = useCallback((s: Sellable) => {
     setLines((prev) => {
+      const unitId = s.matchedUnitId ?? s.baseUnitId;
       const existing = prev.find(
-        (l) => l.sellable.productId === s.productId && l.sellable.variantId === s.variantId && l.unitId === s.baseUnitId && !l.discount,
+        (l) => l.sellable.productId === s.productId && l.sellable.variantId === s.variantId && l.unitId === unitId && !l.discount,
       );
       if (existing) {
         setSelected(existing.key);
@@ -66,7 +67,7 @@ export function useCart() {
       }
       const key = newKey();
       setSelected(key);
-      return [...prev, { key, sellable: s, unitId: s.baseUnitId, qty: "1", discount: null }];
+      return [...prev, { key, sellable: s, unitId, qty: "1", discount: null }];
     });
   }, []);
 

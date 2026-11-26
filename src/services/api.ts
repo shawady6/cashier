@@ -97,6 +97,9 @@ export interface ProductUnitDetail {
   factorMicro: number;
   isPurchaseUnit: boolean;
   isSaleUnit: boolean;
+  /** سعر بيع الوحدة الكبيرة بالقروش. null = سعر القطعة × العدد */
+  salePriceMinor: number | null;
+  barcode: string | null;
 }
 
 export interface ProductDetail {
@@ -146,7 +149,7 @@ export interface ProductInput {
     isActive: boolean;
     barcodes: string[];
   }[];
-  units: { unitId: string; factor: string; isPurchaseUnit: boolean; isSaleUnit: boolean }[];
+  units: { unitId: string; factor: string; isPurchaseUnit: boolean; isSaleUnit: boolean; salePrice?: string; barcode?: string }[];
 }
 
 export interface SellUnit {
@@ -154,6 +157,8 @@ export interface SellUnit {
   nameAr: string;
   factorMicro: number;
   allowsDecimal: boolean;
+  /** سعر بيع هذه الوحدة. null = سعر القطعة × المعامل */
+  salePriceMinor: number | null;
 }
 
 export interface Sellable {
@@ -169,6 +174,8 @@ export interface Sellable {
   baseUnitName: string;
   allowsDecimal: boolean;
   units: SellUnit[];
+  /** وحدة باركود الوحدة الكبيرة لو طابقه البحث */
+  matchedUnitId: string | null;
 }
 
 export interface DiscountInput {
@@ -302,7 +309,11 @@ export interface AdjustInput {
   variantId: string | null;
   direction: "increase" | "decrease";
   qty: string;
+  unitId?: string | null;
+  /** عدد القطع في الوحدة لهذه العملية فقط */
+  factor?: string;
   unitCost?: string;
+  salePrice?: string;
   note?: string;
 }
 
@@ -334,7 +345,8 @@ export interface PurchaseRow {
 }
 export interface PurchaseItemDetail {
   id: string; lineNo: number; productId: string; variantId: string | null; nameAr: string; variantName: string | null;
-  unitId: string; unitName: string; qtyMilli: number; unitCostMinor: number; lineTotalMinor: number; netMinor: number; returnedQtyMilli: number;
+  unitId: string; unitName: string; unitFactorMicro: number; qtyMilli: number; baseQtyMilli: number; unitCostMinor: number; lineTotalMinor: number; netMinor: number;
+  newSalePriceMinor: number | null; returnedQtyMilli: number;
 }
 export interface PurchaseDetail {
   header: PurchaseRow; supplierId: string; warehouseId: string; warehouseName: string; note: string;
@@ -346,7 +358,7 @@ export interface PurchaseDetail {
 export interface PurchaseInput {
   id?: string; supplierId: string; warehouseId: string; supplierInvoiceNo: string; note: string;
   discount: DiscountInput | null;
-  items: { productId: string; variantId: string | null; unitId: string | null; qty: string; unitCost: string }[];
+  items: { productId: string; variantId: string | null; unitId: string | null; qty: string; unitCost: string; factor?: string; salePrice?: string }[];
 }
 
 export interface SessionSummary {

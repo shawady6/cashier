@@ -1,7 +1,7 @@
 import { Search } from "lucide-react";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { inputClass } from "../../components/ui";
-import { formatMoney, formatQty } from "../../lib/format";
+import { formatBigUnitStock, formatMoney, formatQty } from "../../lib/format";
 import { api, type Sellable } from "../../services/api";
 
 export interface SearchBoxHandle {
@@ -46,7 +46,7 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
           onMessage(`لا يوجد منتج مطابق لـ «${q}»`);
           return;
         }
-        const exact = fresh.find((s) => s.barcode === q || s.sku === q);
+        const exact = fresh.find((s) => s.barcode === q || s.sku === q || s.matchedUnitId !== null);
         const chosen = exact ?? (fresh.length === 1 ? fresh[0] : results[active] ?? fresh[0]);
         pick(chosen);
       } catch (e) {
@@ -93,6 +93,9 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
                   <div className={`text-xs ${s.stockQty <= 0 ? "text-red-600" : "text-slate-500"}`}>
                     المتاح: {formatQty(s.stockQty)} {s.baseUnitName}
                   </div>
+                  {formatBigUnitStock(s.stockQty, s.units[1], s.baseUnitName) && (
+                    <div className="text-xs text-slate-500">{formatBigUnitStock(s.stockQty, s.units[1], s.baseUnitName)}</div>
+                  )}
                 </div>
               </li>
             ))}

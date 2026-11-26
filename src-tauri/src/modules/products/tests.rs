@@ -140,14 +140,14 @@ async fn decimal_quantities_follow_unit_rules() {
 async fn extra_units_are_saved_with_exact_factor() {
     let pool = memory_pool().await;
     let mut a = input("مياه");
-    a.units = vec![ProductUnitInput { unit_id: CARTON.into(), factor: "12".into(), is_purchase_unit: true, is_sale_unit: false }];
+    a.units = vec![ProductUnitInput { unit_id: CARTON.into(), factor: "12".into(), is_purchase_unit: true, is_sale_unit: false, ..Default::default() }];
     let id = save(&pool, &a).await.unwrap();
     let d = get(&pool, &id).await.unwrap();
     assert_eq!(d.units.len(), 1);
     assert_eq!(d.units[0].factor_micro, 12_000_000);
 
     let mut bad = input("مياه 2");
-    bad.units = vec![ProductUnitInput { unit_id: PIECE.into(), factor: "1".into(), is_purchase_unit: false, is_sale_unit: false }];
+    bad.units = vec![ProductUnitInput { unit_id: PIECE.into(), factor: "1".into(), is_purchase_unit: false, is_sale_unit: false, ..Default::default() }];
     assert!(save(&pool, &bad).await.is_err()); // الوحدة الأساسية لا تُضاف كوحدة إضافية
 }
 

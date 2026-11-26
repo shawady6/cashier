@@ -98,6 +98,8 @@ export default function ProductForm({ productId, profile, categories, brands, un
             factor: microToInput(u.factorMicro),
             isPurchaseUnit: u.isPurchaseUnit,
             isSaleUnit: u.isSaleUnit,
+            salePrice: u.salePriceMinor == null ? "" : minorToInput(u.salePriceMinor),
+            barcode: u.barcode ?? "",
           })),
         });
         if (p.hasImage) setImage(await api.getProductImage(productId));
@@ -226,32 +228,44 @@ export default function ProductForm({ productId, profile, categories, brands, un
 
       <section className={sectionClass}>
         <div className="flex items-center justify-between">
-          <h4 className="font-semibold">وحدات إضافية (كرتونة، عبوة…)</h4>
-          <button type="button" className={btnGhost} onClick={() => extraUnits.append({ unitId: "", factor: "1", isPurchaseUnit: true, isSaleUnit: false })}>
-            <Plus size={14} /> إضافة وحدة
-          </button>
-        </div>
-        {extraUnits.fields.length === 0 && <p className="text-xs text-slate-500">مثال: كرتونة = 12 {baseUnit?.nameAr ?? "وحدة أساسية"}.</p>}
-        {extraUnits.fields.map((f, i) => (
-          <div key={f.id} className="grid items-end gap-2 md:grid-cols-[1fr_8rem_auto_auto_auto]">
-            <Field label="الوحدة" error={errors.units?.[i]?.unitId?.message}>
-              <select className={inputClass} {...register(`units.${i}.unitId`)}>
-                <option value="">اختر…</option>
-                {units.filter((u) => u.id !== baseUnitId).map((u) => (
-                  <option key={u.id} value={u.id}>{u.nameAr}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label={`تساوي (${baseUnit?.nameAr ?? ""})`} error={errors.units?.[i]?.factor?.message}>
-              <input inputMode="decimal" className={inputClass} {...register(`units.${i}.factor`)} />
-            </Field>
-            <label className="flex items-center gap-1 pb-2 text-sm"><input type="checkbox" {...register(`units.${i}.isPurchaseUnit`)} /> شراء</label>
-            <label className="flex items-center gap-1 pb-2 text-sm"><input type="checkbox" {...register(`units.${i}.isSaleUnit`)} /> بيع</label>
-            <button type="button" aria-label="حذف الوحدة" className={`${btnGhost} mb-0.5 text-red-600`} onClick={() => extraUnits.remove(i)}>
-              <Trash2 size={14} />
+          <h4 className="font-semibold">الوحدة الكبيرة (كرتونة، دستة…)</h4>
+          {extraUnits.fields.length === 0 && (
+            <button type="button" className={btnGhost} onClick={() => extraUnits.append({ unitId: "", factor: "12", isPurchaseUnit: true, isSaleUnit: true, salePrice: "", barcode: "" })}>
+              <Plus size={14} /> إضافة وحدة كبيرة
             </button>
-          </div>
-        ))}
+          )}
+        </div>
+        {extraUnits.fields.length === 0 && <p className="text-xs text-slate-500">اختيارية. المخزون يُحفظ دائمًا بالقطعة، والوحدة الكبيرة للشراء والبيع فقط.</p>}
+        {extraUnits.fields.map((f, i) => {
+          const pieceSale = Number((watch("salePrice") || "0").replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))).replace(/[,٫]/g, "."));
+          const count = Number((watch(`units.${i}.factor`) || "0").replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d))));
+          const hint = Number.isFinite(pieceSale) && count >= 2 ? (Math.round(pieceSale * 100 * count) / 100).toFixed(2) : "";
+          return (
+            <div key={f.id} className="grid items-end gap-2 md:grid-cols-[1fr_8rem_1fr_1fr_auto]">
+              <Field label="الوحدة الكبيرة" error={errors.units?.[i]?.unitId?.message}>
+                <select className={inputClass} {...register(`units.${i}.unitId`)}>
+                  <option value="">اختر…</option>
+                  {units.filter((u) => u.id !== baseUnitId && ["carton", "dozen", "box", "pack"].includes(u.code) || u.id === f.unitId).map((u) => (
+                    <option key={u.id} value={u.id}>{u.nameAr}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={`عدد ${baseUnit?.nameAr ?? "القطع"} فيها`} error={errors.units?.[i]?.factor?.message}>
+                <input inputMode="numeric" className={inputClass} {...register(`units.${i}.factor`)} />
+              </Field>
+              <Field label="سعر بيع الوحدة الكبيرة" error={errors.units?.[i]?.salePrice?.message}>
+                <input inputMode="decimal" className={inputClass} placeholder={hint ? `اقتراح: ${hint}` : "اختياري"} {...register(`units.${i}.salePrice`)} />
+              </Field>
+              <Field label="باركود الوحدة الكبيرة (اختياري)">
+                <input className={inputClass} dir="ltr" {...register(`units.${i}.barcode`)} />
+              </Field>
+              <button type="button" aria-label="حذف الوحدة الكبيرة" className={`${btnGhost} mb-0.5 text-red-600`} onClick={() => extraUnits.remove(i)}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          );
+        })}
+        {extraUnits.fields.length > 0 && <p className="text-xs text-slate-500">لو تركت السعر فارغًا يُحسب سعر القطعة × العدد.</p>}
       </section>
 
       {(canVariants || variants.fields.length > 0) && (

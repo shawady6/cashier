@@ -90,10 +90,10 @@ pub async fn quote(conn: &mut SqliteConnection, input: &CartInput) -> Result<Car
         };
 
         // وحدة البيع
-        let (unit_id, unit_name, factor, allows_decimal) = match &item.unit_id {
+        let (unit_id, unit_name, factor, allows_decimal, unit_price_override) = match &item.unit_id {
             Some(uid) if *uid != p.base_unit_id => {
-                let u: Option<(i64, String, bool)> = sqlx::query_as(
-                    "SELECT pu.factor_micro, u.name_ar, u.allows_decimal FROM product_units pu \
+                let u: Option<(i64, String, bool, Option<i64>)> = sqlx::query_as(
+                    "SELECT pu.factor_micro, u.name_ar, u.allows_decimal, pu.sale_price_minor FROM product_units pu \
                      JOIN units u ON u.id = pu.unit_id \
                      WHERE pu.product_id = ?1 AND pu.unit_id = ?2 AND pu.is_sale_unit = 1",
                 )
@@ -101,10 +101,10 @@ pub async fn quote(conn: &mut SqliteConnection, input: &CartInput) -> Result<Car
                 .bind(uid)
                 .fetch_optional(&mut *conn)
                 .await?;
-                let Some((f, n, d)) = u else { return bad("وحدة البيع غير مسموحة لهذا المنتج") };
-                (uid.clone(), n, f, d)
+                let Some((f, n, d, o)) = u else { return bad("وحدة البيع غير مسموحة لهذا المنتج") };
+                (uid.clone(), n, f, d, o)
             }
-            _ => (p.base_unit_id.clone(), p.base_unit_name.clone(), FACTOR_SCALE, p.base_allows_decimal),
+            _ => (p.base_unit_id.clone(), p.base_unit_name.clone(), FACTOR_SCALE, p.base_allows_decimal, None),
         };
 
         let qty = parse_qty(&item.qty, allows_decimal)?;
@@ -115,7 +115,11 @@ pub async fn quote(conn: &mut SqliteConnection, input: &CartInput) -> Result<Car
         if base_qty <= 0 {
             return bad("الكمية صغيرة جدًا بعد تحويل الوحدة");
         }
-        let unit_price = unit_price_for(base_price, factor);
+        // سعر الوحدة الكبيرة المخصص يسري على المنتج بلا متغيرات؛ غير ذلك سعر القطعة × المعامل.
+        let unit_price = match (unit_price_override, &item.variant_id) {
+            (Some(o), None) => o,
+            _ => unit_price_for(base_price, factor),
+        };
         let gross = line_gross(unit_price, qty);
         let discount = discount_amount(gross, parse_discount(&item.discount)?)?;
         nets.push(gross - discount);

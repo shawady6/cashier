@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 use crate::app_core::error::AppError;
 use crate::app_core::money::{div_round, parse_minor};
-use crate::app_core::quantity::parse_qty;
+use crate::app_core::quantity::{parse_qty, to_base_qty, FACTOR_SCALE};
 
 pub async fn default_warehouse(conn: &mut SqliteConnection) -> Result<String, AppError> {
     let id: Option<String> =
@@ -219,19 +219,127 @@ pub async fn issue(
     Ok(cost)
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AdjustInput {
     pub product_id: String,
     pub variant_id: Option<String>,
     /// "increase" أو "decrease"
     pub direction: String,
-    /// بالوحدة الأساسية للمنتج
+    /// بوحدة الإدخال المختارة (الأساسية لو `unit_id` فارغ)
     pub qty: String,
-    /// تكلفة الوحدة الأساسية (للزيادة فقط). الافتراضي سعر الشراء الحالي.
+    /// وحدة الإدخال. الفارغ = الوحدة الأساسية.
+    #[serde(default)]
+    pub unit_id: Option<String>,
+    /// عدد القطع في الوحدة لهذه العملية فقط (يغيّر الافتراضي للمنتج مؤقتًا). رقم صحيح 2 أو أكثر.
+    #[serde(default)]
+    pub factor: Option<String>,
+    /// تكلفة وحدة الإدخال (للزيادة فقط). الافتراضي سعر الشراء الحالي للقطعة.
     pub unit_cost: Option<String>,
+    /// سعر بيع وحدة الإدخال (للزيادة فقط). يحدّث سعر البيع الحالي لهذه الوحدة.
+    #[serde(default)]
+    pub sale_price: Option<String>,
     #[serde(default)]
     pub note: String,
+}
+
+/// الوحدة المختارة لعملية إدخال: (معرّف الوحدة، المعامل بالمليون، تسمح بالكسور؟)
+pub struct ResolvedUnit {
+    pub unit_id: String,
+    pub unit_name: String,
+    pub factor_micro: i64,
+    pub allows_decimal: bool,
+    pub is_base: bool,
+}
+
+/// تحديد وحدة الإدخال والمعامل الفعلي. `purchase_only` تشترط أن تكون الوحدة وحدة شراء.
+/// المعامل المُمرَّر يغيّر القيمة لهذه العملية فقط ولا يمس إعدادات المنتج.
+pub async fn resolve_unit(
+    conn: &mut SqliteConnection,
+    product_id: &str,
+    unit_id: Option<&str>,
+    factor_override: Option<&str>,
+    purchase_only: bool,
+) -> Result<ResolvedUnit, AppError> {
+    let bad = |m: &str| AppError::Validation(m.to_string());
+    let base: (String, String, bool) = sqlx::query_as(
+        "SELECT p.base_unit_id, u.name_ar, u.allows_decimal FROM products p JOIN units u ON u.id = p.base_unit_id WHERE p.id = ?1",
+    )
+    .bind(product_id)
+    .fetch_optional(&mut *conn)
+    .await?
+    .ok_or_else(|| bad("المنتج غير موجود"))?;
+    match unit_id {
+        Some(uid) if !uid.is_empty() && uid != base.0 => {
+            let q = if purchase_only {
+                "SELECT pu.factor_micro, u.name_ar, u.allows_decimal FROM product_units pu JOIN units u ON u.id = pu.unit_id \
+                 WHERE pu.product_id = ?1 AND pu.unit_id = ?2 AND pu.is_purchase_unit = 1"
+            } else {
+                "SELECT pu.factor_micro, u.name_ar, u.allows_decimal FROM product_units pu JOIN units u ON u.id = pu.unit_id \
+                 WHERE pu.product_id = ?1 AND pu.unit_id = ?2"
+            };
+            let row: Option<(i64, String, bool)> =
+                sqlx::query_as(q).bind(product_id).bind(uid).fetch_optional(&mut *conn).await?;
+            let Some((default_factor, name, dec)) = row else { return Err(bad("الوحدة غير مسموحة لهذا المنتج")) };
+            let factor_micro = match factor_override.map(str::trim) {
+                Some(f) if !f.is_empty() => {
+                    let v = crate::app_core::quantity::parse_factor(f)?;
+                    if v < 2 * FACTOR_SCALE || v % FACTOR_SCALE != 0 {
+                        return Err(bad("عدد القطع في الوحدة الكبيرة يجب أن يكون رقمًا صحيحًا 2 أو أكثر"));
+                    }
+                    v
+                }
+                _ => default_factor,
+            };
+            Ok(ResolvedUnit { unit_id: uid.to_string(), unit_name: name, factor_micro, allows_decimal: dec, is_base: false })
+        }
+        _ => Ok(ResolvedUnit { unit_id: base.0, unit_name: base.1, factor_micro: FACTOR_SCALE, allows_decimal: base.2, is_base: true }),
+    }
+}
+
+/// تحديث سعر بيع وحدة (يُستدعى عند استلام الشراء أو إدخال رصيد): القطعة ← سعر المنتج/المتغير،
+/// الوحدة الكبيرة ← `product_units.sale_price_minor`. بند متغير بوحدة كبيرة لا يحدّث شيئًا.
+/// يرجع true لو تم التحديث فعلًا.
+pub async fn apply_unit_sale_price(
+    conn: &mut SqliteConnection,
+    product_id: &str,
+    variant_id: Option<&str>,
+    unit_id: &str,
+    price_minor: i64,
+) -> Result<bool, AppError> {
+    let base_unit: String = sqlx::query_scalar("SELECT base_unit_id FROM products WHERE id = ?1")
+        .bind(product_id)
+        .fetch_one(&mut *conn)
+        .await?;
+    if unit_id == base_unit {
+        match variant_id {
+            Some(v) => {
+                sqlx::query("UPDATE product_variants SET sale_price = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1")
+                    .bind(v)
+                    .bind(price_minor)
+                    .execute(&mut *conn)
+                    .await?;
+            }
+            None => {
+                sqlx::query("UPDATE products SET sale_price = ?2, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id = ?1")
+                    .bind(product_id)
+                    .bind(price_minor)
+                    .execute(&mut *conn)
+                    .await?;
+            }
+        }
+        Ok(true)
+    } else if variant_id.is_none() {
+        let r = sqlx::query("UPDATE product_units SET sale_price_minor = ?3 WHERE product_id = ?1 AND unit_id = ?2")
+            .bind(product_id)
+            .bind(unit_id)
+            .bind(price_minor)
+            .execute(&mut *conn)
+            .await?;
+        Ok(r.rows_affected() > 0)
+    } else {
+        Ok(false)
+    }
 }
 
 pub async fn adjust(pool: &SqlitePool, input: &AdjustInput) -> Result<(), AppError> {
@@ -271,21 +379,34 @@ async fn adjust_in_tx(conn: &mut SqliteConnection, input: &AdjustInput) -> Resul
             return Err(bad("المتغير لا يخص هذا المنتج"));
         }
     }
-    let qty = parse_qty(&input.qty, allows_decimal)?;
-    if qty == 0 {
+    let _ = allows_decimal;
+    let unit = resolve_unit(conn, &input.product_id, input.unit_id.as_deref(), input.factor.as_deref(), false).await?;
+    let entered = parse_qty(&input.qty, unit.allows_decimal)?;
+    if entered == 0 {
         return Err(bad("الكمية يجب أن تكون أكبر من صفر"));
+    }
+    let qty = to_base_qty(entered, unit.factor_micro)?;
+    if qty <= 0 {
+        return Err(bad("الكمية صغيرة جدًا بعد تحويل الوحدة"));
     }
     let wh = default_warehouse(conn).await?;
     let variant = input.variant_id.as_deref();
     let r = MovementRef { movement_type: "adjustment", ref_type: "adjustment", ref_id: "", note: input.note.trim() };
     match input.direction.as_str() {
         "increase" => {
-            let unit_cost = match &input.unit_cost {
-                Some(c) if !c.trim().is_empty() => parse_minor(c)?,
-                _ => default_cost,
+            // القيمة الكاملة من إجمالي السطر (تكلفة الوحدة المدخلة × الكمية المدخلة) بدون تقريب لكل قطعة.
+            let value = match &input.unit_cost {
+                Some(c) if !c.trim().is_empty() => div_round(i128::from(parse_minor(c)?) * i128::from(entered), 1000) as i64,
+                _ => div_round(i128::from(default_cost) * i128::from(qty), 1000) as i64,
             };
-            let value = div_round(i128::from(unit_cost) * i128::from(qty), 1000) as i64;
+            let new_price = match input.sale_price.as_deref().map(str::trim) {
+                Some(p) if !p.is_empty() => Some(parse_minor(p)?),
+                _ => None,
+            };
             receive(conn, &wh, &input.product_id, variant, qty, value, &r).await?;
+            if let Some(p) = new_price {
+                apply_unit_sale_price(conn, &input.product_id, variant, &unit.unit_id, p).await?;
+            }
         }
         "decrease" => {
             let allow = allow_negative(conn).await?;
@@ -312,7 +433,7 @@ mod tests {
     fn adj(id: &str, dir: &str, qty: &str, cost: Option<&str>) -> AdjustInput {
         AdjustInput {
             product_id: id.into(), variant_id: None, direction: dir.into(), qty: qty.into(),
-            unit_cost: cost.map(Into::into), note: String::new(),
+            unit_cost: cost.map(Into::into), note: String::new(), ..Default::default()
         }
     }
 

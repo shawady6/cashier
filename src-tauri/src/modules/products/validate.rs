@@ -57,6 +57,8 @@ pub struct ParsedVariant<'a> {
 pub struct ParsedUnit<'a> {
     pub src: &'a ProductUnitInput,
     pub factor_micro: i64,
+    pub sale_price: Option<i64>,
+    pub barcode: Option<String>,
 }
 
 pub struct Parsed<'a> {
@@ -120,7 +122,31 @@ pub fn parse(input: &ProductInput) -> Result<Parsed<'_>, AppError> {
         if !seen_units.insert(u.unit_id.clone()) {
             return err("وحدة مكررة في قائمة الوحدات");
         }
-        units.push(ParsedUnit { src: u, factor_micro: parse_factor(&u.factor)? });
+        let factor_micro = parse_factor(&u.factor)?;
+        if factor_micro < 2 * 1_000_000 || factor_micro % 1_000_000 != 0 {
+            return err("عدد القطع في الوحدة الكبيرة يجب أن يكون رقمًا صحيحًا 2 أو أكثر");
+        }
+        let sale_price = match u.sale_price.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => Some(parse_minor(p)?),
+            _ => None,
+        };
+        let barcode = match u.barcode.as_deref().map(str::trim) {
+            Some(b) if !b.is_empty() => {
+                let b = clean_barcode(b)?;
+                if !seen_barcodes.insert(b.clone()) {
+                    return err(format!("الباركود {b} مكرر داخل نفس المنتج"));
+                }
+                Some(b)
+            }
+            _ => None,
+        };
+        units.push(ParsedUnit { src: u, factor_micro, sale_price, barcode });
+    }
+    if units.len() > 1 {
+        return err("يسمح بوحدة كبيرة واحدة فقط لكل منتج");
+    }
+    if units.iter().any(|u| u.barcode.is_some()) && !variants.is_empty() {
+        return err("باركود الوحدة الكبيرة غير متاح للمنتجات ذات المتغيرات");
     }
 
     // SKU مكرر داخل نفس الطلب (منتج + متغيراته)
