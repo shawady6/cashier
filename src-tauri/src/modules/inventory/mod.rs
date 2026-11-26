@@ -396,6 +396,26 @@ pub async fn record_unit_purchase_price(
     Ok(())
 }
 
+/// رصيد افتتاحي لعدة أصناف دفعة واحدة: كلها في transaction واحدة، وأي خطأ يلغي الكل.
+pub async fn adjust_many(pool: &SqlitePool, inputs: &[AdjustInput]) -> Result<(), AppError> {
+    if inputs.is_empty() {
+        return Err(AppError::Validation("لا توجد أصناف للحفظ".into()));
+    }
+    let mut tx = pool.begin().await?;
+    for (i, input) in inputs.iter().enumerate() {
+        if let Err(e) = adjust_in_tx(&mut tx, input).await {
+            tx.rollback().await?;
+            let msg = match e {
+                AppError::Validation(m) => format!("السطر {}: {m}", i + 1),
+                other => return Err(other),
+            };
+            return Err(AppError::Validation(msg));
+        }
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn adjust(pool: &SqlitePool, input: &AdjustInput) -> Result<(), AppError> {
     let mut tx = pool.begin().await?;
     let result = adjust_in_tx(&mut tx, input).await;

@@ -59,6 +59,7 @@ pub fn run() {
             commands::resume_sale,
             commands::discard_suspended_sale,
             commands::adjust_stock,
+            commands::adjust_stock_many,
             commands::list_warehouses,
             commands::save_warehouse,
             commands::stock_balances,

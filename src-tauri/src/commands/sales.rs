@@ -62,6 +62,11 @@ pub async fn discard_suspended_sale(state: State<'_, AppState>, id: String) -> R
 }
 
 #[tauri::command]
+pub async fn adjust_stock_many(state: State<'_, AppState>, inputs: Vec<AdjustInput>) -> Result<(), AppError> {
+    inventory::adjust_many(&state.db, &inputs).await
+}
+
+#[tauri::command]
 pub async fn adjust_stock(state: State<'_, AppState>, input: AdjustInput) -> Result<(), AppError> {
     inventory::adjust(&state.db, &input).await
 }

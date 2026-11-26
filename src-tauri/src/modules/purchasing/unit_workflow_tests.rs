@@ -202,3 +202,22 @@ async fn default_sale_unit_is_reported_for_the_pos() {
     let hit = &products::search_sellables(&pool, "عادي", 5).await.unwrap()[0];
     assert_eq!(hit.default_unit_id, PIECE);
 }
+
+#[tokio::test]
+async fn opening_stock_batch_is_all_or_nothing() {
+    use crate::modules::inventory::{adjust_many, AdjustInput};
+    let pool = memory_pool().await;
+    let a = products::save(&pool, &carton_product("أ", "90", "100")).await.unwrap();
+    let b = products::save(&pool, &carton_product("ب", "80", "120")).await.unwrap();
+    let ok = |pid: &str, qty: &str, cost: &str| AdjustInput {
+        product_id: pid.into(), direction: "increase".into(), qty: qty.into(), unit_id: Some(CARTON.into()),
+        unit_cost: Some(cost.into()), ..Default::default()
+    };
+    // سطر ثانٍ خاطئ (كمية صفر): لا يُحفظ أي شيء
+    assert!(adjust_many(&pool, &[ok(&a, "12", "90"), ok(&b, "0", "80")]).await.is_err());
+    assert_eq!(row(&pool, "SELECT COUNT(*), 0 FROM stock_balances").await.0, 0);
+
+    adjust_many(&pool, &[ok(&a, "12", "90"), ok(&b, "13", "80")]).await.unwrap();
+    // 12 كرتونة بـ 90 = 144 قطعة، 13 كرتونة بـ 80 = 156 قطعة
+    assert_eq!(row(&pool, "SELECT SUM(qty_milli), SUM(value_minor) FROM stock_balances").await, (300_000, 108_000 + 104_000));
+}
