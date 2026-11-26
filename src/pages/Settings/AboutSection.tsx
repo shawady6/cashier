@@ -26,8 +26,7 @@ export default function AboutSection() {
   ];
 
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-      <h3 className="font-semibold">حول البرنامج</h3>
+    <>
       {error && <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">تعذّر قراءة حالة النظام: {error}</div>}
       <dl className="grid gap-2 text-sm sm:grid-cols-2">
         {rows.map(([k, v]) => (
@@ -37,6 +36,6 @@ export default function AboutSection() {
           </div>
         ))}
       </dl>
-    </section>
+    </>
   );
 }

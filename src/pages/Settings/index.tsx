@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import AccordionSection from "../../components/AccordionSection";
 import PageHeader from "../../components/PageHeader";
 import AboutSection from "./AboutSection";
 import PosSettings from "./PosSettings";
@@ -13,6 +14,23 @@ export default function SettingsPage() {
   const update = useSettingsStore((s) => s.update);
   const [profiles, setProfiles] = useState<BusinessProfile[]>([]);
   const [form, setForm] = useState({ store_name: "", store_address: "", store_phone: "" });
+  const [openId, setOpenId] = useState<string | null>(() => {
+    try {
+      return sessionStorage.getItem("settings.open");
+    } catch {
+      return null;
+    }
+  });
+  const toggle = (id: string) => {
+    const next = openId === id ? null : id;
+    setOpenId(next);
+    try {
+      if (next) sessionStorage.setItem("settings.open", next);
+      else sessionStorage.removeItem("settings.open");
+    } catch {
+      /* التخزين غير متاح */
+    }
+  };
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -40,8 +58,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-8">
-      <PageHeader title="الإعدادات" description="تُحفظ كل الإعدادات في قاعدة البيانات المحلية." />
+    <div className="max-w-2xl space-y-3">
+      <PageHeader title="الإعدادات" />
       {msg && (
         <div
           role="status"
@@ -51,8 +69,7 @@ export default function SettingsPage() {
         </div>
       )}
 
-      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-        <h3 className="font-semibold">بيانات المتجر</h3>
+      <AccordionSection id="store" title="بيانات المتجر" open={openId === "store"} onToggle={toggle}>
         <label className="block text-sm">
           اسم المتجر
           <input
@@ -94,10 +111,9 @@ export default function SettingsPage() {
         >
           حفظ بيانات المتجر
         </button>
-      </section>
+      </AccordionSection>
 
-      <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-800">
-        <h3 className="font-semibold">نوع النشاط</h3>
+      <AccordionSection id="business" title="نوع النشاط" open={openId === "business"} onToggle={toggle}>
         <select
           className={inputClass}
           value={settings.business_profile_code ?? ""}
@@ -132,10 +148,14 @@ export default function SettingsPage() {
           />
           إلزام فتح وردية خزينة قبل أي بيع أو حركة مالية
         </label>
-      </section>
+      </AccordionSection>
 
-      <PosSettings />
-      <AboutSection />
+      <AccordionSection id="pos" title="الكاشير والإيصال" open={openId === "pos"} onToggle={toggle}>
+        <PosSettings />
+      </AccordionSection>
+      <AccordionSection id="about" title="حول البرنامج" open={openId === "about"} onToggle={toggle}>
+        <AboutSection />
+      </AccordionSection>
     </div>
   );
 }
