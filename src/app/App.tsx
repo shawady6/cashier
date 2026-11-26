@@ -10,6 +10,7 @@ import InventoryPage from "../pages/Inventory";
 import PosPage from "../pages/POS";
 import ProductsPage from "../pages/Products";
 import PurchasesPage from "../pages/Purchases";
+import ReportsPage from "../pages/Reports";
 import SalesPage from "../pages/Sales";
 import SettingsPage from "../pages/Settings";
 import SuppliersPage from "../pages/Suppliers";
@@ -37,9 +38,10 @@ export default function App() {
           <Route path="suppliers" element={<SuppliersPage />} />
           <Route path="customers" element={<CustomersPage />} />
           <Route path="expenses" element={<TreasuryPage />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<SettingsPage />} />
           {navItems
-            .filter((item) => item.phase > 4)
+            .filter((item) => item.phase > 5)
             .map((item) => (
               <Route
                 key={item.path}

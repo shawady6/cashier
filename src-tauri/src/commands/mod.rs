@@ -3,10 +3,12 @@
 mod catalog;
 mod finance;
 mod inventory;
+mod reports;
 mod sales;
 pub use catalog::*;
 pub use finance::*;
 pub use inventory::*;
+pub use reports::*;
 pub use sales::*;
 
 use std::collections::HashMap;

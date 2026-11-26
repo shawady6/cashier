@@ -100,3 +100,23 @@ mod tests {
         assert_eq!(parse_minor("0.1").unwrap() + parse_minor("0.2").unwrap(), parse_minor("0.3").unwrap());
     }
 }
+
+/// قروش → نص عشري بدقة قرشين ("123.45" و"-0.05") لملفات التصدير.
+pub fn format_minor(minor: i64) -> String {
+    let sign = if minor < 0 { "-" } else { "" };
+    let abs = i128::from(minor).abs();
+    format!("{sign}{}.{:02}", abs / 100, abs % 100)
+}
+
+/// ألف من الوحدة (milli) → نص عشري بدون أصفار زائدة ("12" و"2.5").
+pub fn format_milli(milli: i64) -> String {
+    let sign = if milli < 0 { "-" } else { "" };
+    let abs = i128::from(milli).abs();
+    let (whole, frac) = (abs / 1000, abs % 1000);
+    if frac == 0 {
+        format!("{sign}{whole}")
+    } else {
+        let f = format!("{frac:03}");
+        format!("{sign}{whole}.{}", f.trim_end_matches('0'))
+    }
+}
