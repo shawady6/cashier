@@ -112,7 +112,7 @@ export default function PosPage() {
                   >
                     <td className="px-3 py-2">
                       <div className="font-medium">{l.sellable.nameAr}{l.sellable.variantName ? ` - ${l.sellable.variantName}` : ""}</div>
-                      <div className="text-xs text-slate-500">المتاح: {formatQty(l.sellable.stockQty)} {l.sellable.baseUnitName}{formatBigUnitStock(l.sellable.stockQty, l.sellable.units[1], l.sellable.baseUnitName) ? ` (${formatBigUnitStock(l.sellable.stockQty, l.sellable.units[1], l.sellable.baseUnitName)})` : ""}</div>
+                      <div className="text-xs text-slate-500">المتاح: {formatQty(l.sellable.stockQty)} {l.sellable.baseUnitName}{formatBigUnitStock(l.sellable.stockQty, l.sellable.units.find((u) => u.unitId !== l.sellable.baseUnitId), l.sellable.baseUnitName) ? ` (${formatBigUnitStock(l.sellable.stockQty, l.sellable.units.find((u) => u.unitId !== l.sellable.baseUnitId), l.sellable.baseUnitName)})` : ""}</div>
                     </td>
                     <td className="px-3 py-2">
                       {l.sellable.units.length > 1 ? (
@@ -124,7 +124,7 @@ export default function PosPage() {
                         >
                           {l.sellable.units.map((u) => <option key={u.unitId} value={u.unitId}>{u.nameAr}</option>)}
                         </select>
-                      ) : l.sellable.baseUnitName}
+                      ) : (l.sellable.units[0]?.nameAr ?? l.sellable.baseUnitName)}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-center gap-1">

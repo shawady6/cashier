@@ -48,7 +48,9 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
         }
         const exact = fresh.find((s) => s.barcode === q || s.sku === q || s.matchedUnitId !== null);
         const chosen = exact ?? (fresh.length === 1 ? fresh[0] : results[active] ?? fresh[0]);
-        pick(chosen);
+        // باركود القطعة يُضيف القطعة لو مسموح بيعها بها، وإلا الوحدة الافتراضية
+        const byPieceCode = chosen.barcode === q && chosen.units.some((u) => u.unitId === chosen.baseUnitId);
+        pick(byPieceCode ? { ...chosen, defaultUnitId: chosen.baseUnitId } : chosen);
       } catch (e) {
         onMessage(String(e));
       }
@@ -93,8 +95,8 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
                   <div className={`text-xs ${s.stockQty <= 0 ? "text-red-600" : "text-slate-500"}`}>
                     المتاح: {formatQty(s.stockQty)} {s.baseUnitName}
                   </div>
-                  {formatBigUnitStock(s.stockQty, s.units[1], s.baseUnitName) && (
-                    <div className="text-xs text-slate-500">{formatBigUnitStock(s.stockQty, s.units[1], s.baseUnitName)}</div>
+                  {formatBigUnitStock(s.stockQty, s.units.find((u) => u.unitId !== s.baseUnitId), s.baseUnitName) && (
+                    <div className="text-xs text-slate-500">{formatBigUnitStock(s.stockQty, s.units.find((u) => u.unitId !== s.baseUnitId), s.baseUnitName)}</div>
                   )}
                 </div>
               </li>

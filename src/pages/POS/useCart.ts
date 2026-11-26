@@ -57,7 +57,7 @@ export function useCart() {
 
   const add = useCallback((s: Sellable) => {
     setLines((prev) => {
-      const unitId = s.matchedUnitId ?? s.baseUnitId;
+      const unitId = s.matchedUnitId ?? s.defaultUnitId;
       const existing = prev.find(
         (l) => l.sellable.productId === s.productId && l.sellable.variantId === s.variantId && l.unitId === unitId && !l.discount,
       );

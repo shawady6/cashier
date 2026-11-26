@@ -62,3 +62,10 @@ SQLite في `%APPDATA%\com.shawady.pos\pos.db`، وليست في مجلد الت
 - `purchase_items.new_sale_price_minor` (اختياري): سعر البيع المُدخل في السطر، للتدقيق.
 - المخزون دائمًا بالوحدة الأساسية؛ `purchase_items.unit_factor_micro` و`base_qty_milli` تحفظان لقطة التحويل.
 - ملاحظة: المواصفات ذكرت 0005 لكنها كانت محجوزة للمالية، فالرقم 0006.
+
+## Migration 0007 — خيارات الشراء والبيع بالوحدات
+- `products.buy_in_base` / `sell_in_base`: هل يُشترى/يُباع بالقطعة (الافتراضي 1). و`default_buy_big` / `default_sell_big`: الوحدة الكبيرة هي الافتراضية.
+- `products.price_source`: `manual` (سعر القطعة مُدخل) أو `derived` (محسوب من سعر بيع الوحدة الكبيرة ÷ العدد، مقرّبًا لأعلى، ويُعاد حسابه عند تغيّر سعر الوحدة بالاستلام).
+- `product_units.purchase_price_minor`: آخر سعر شراء (جملة) للوحدة الكبيرة، يُحدَّث عند الاستلام.
+- كل الأعمدة الجديدة لها قيم افتراضية تحافظ على سلوك المنتجات القديمة.
+- قبل تطبيق أي migration على قاعدة فيها بيانات تُحفظ نسخة كاملة في `backups/pre-migration-*.db` (VACUUM INTO + integrity_check)، وتبقى آخر 5 نسخ. فشل النسخة يوقف التحديث.

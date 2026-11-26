@@ -206,7 +206,7 @@ export default function ProductForm({ productId, profile, categories, brands, un
   }
   function enableBig(on: boolean) {
     if (on) {
-      extraUnits.append({ unitId: "", factor: "12", isPurchaseUnit: true, isSaleUnit: true, salePrice: "", purchasePrice: "", barcode: "" });
+      extraUnits.append({ unitId: units.find((u) => u.id !== baseUnitId && u.code === "carton")?.id ?? "", factor: "12", isPurchaseUnit: true, isSaleUnit: true, salePrice: "", purchasePrice: "", barcode: "" });
       setValue("defaultBuyBig", true, { shouldDirty: true });
       setValue("defaultSellBig", false, { shouldDirty: true });
     } else {

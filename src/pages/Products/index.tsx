@@ -14,6 +14,7 @@ import {
 } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
 import ProductForm from "./ProductForm";
+import OpeningStock from "./OpeningStock";
 import StockDialog from "./StockDialog";
 
 export default function ProductsPage() {
@@ -28,6 +29,7 @@ export default function ProductsPage() {
   const [brandId, setBrandId] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [editing, setEditing] = useState<{ id: string | null } | null>(null);
+  const [openingStock, setOpeningStock] = useState(false);
   const [stockFor, setStockFor] = useState<ProductListItem | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,6 +84,7 @@ export default function ProductsPage() {
         <button className={btnPrimary} onClick={() => setEditing({ id: null })} disabled={units.length === 0}>
           <Plus size={16} /> منتج جديد
         </button>
+        <button className={btnGhost} onClick={() => setOpeningStock(true)} disabled={units.length === 0}><Boxes size={16} /> رصيد افتتاحي</button>
       </div>
 
       <div className={`${cardClass} mb-4 flex flex-wrap items-center gap-3 p-3`}>
@@ -168,6 +171,7 @@ export default function ProductsPage() {
         </table>
       </div>
 
+      {openingStock && <OpeningStock onClose={() => setOpeningStock(false)} onDone={() => { setOpeningStock(false); loadProducts(); }} />}
       {stockFor && (
         <StockDialog product={stockFor} onClose={() => setStockFor(null)} onDone={() => { setStockFor(null); loadProducts(); }} />
       )}

@@ -85,7 +85,6 @@ export default function StockDialog({ product, onDone, onClose }: { product: Pro
         <label className="block text-sm">ملاحظة
           <input className={`${inputClass} mt-1`} value={note} onChange={(e) => setNote(e.target.value)} />
         </label>
-        <p className="text-xs text-slate-500">الرصيد يُحفظ دائمًا بالقطعة. للاستلام من الموردين استخدم فاتورة شراء.</p>
         <div className="flex justify-end gap-2">
           <button type="button" className={btnGhost} onClick={onClose}>إلغاء</button>
           <button type="submit" className={btnPrimary} disabled={busy}>حفظ</button>
