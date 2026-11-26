@@ -4,20 +4,21 @@ import Alert from "../../components/Alert";
 import ItemPicker from "../../components/ItemPicker";
 import Modal from "../../components/Modal";
 import { btnGhost, btnPrimary, inputClass } from "../../components/ui";
-import { microToInput, milliToInput, minorToInput } from "../../lib/format";
-import { api, type SellUnit, type Supplier, type Warehouse } from "../../services/api";
+import { buildChoices, lineForChoice, type UnitChoice, type UnitLineState } from "../../lib/bigUnit";
+import { minorToInput, milliToInput } from "../../lib/format";
+import UnitLineFields from "../../components/UnitLineFields";
+import { api, type ProductDetail, type Sellable, type Supplier, type Unit, type Warehouse } from "../../services/api";
 
 interface Line {
+  key: string;
   productId: string;
   variantId: string | null;
   name: string;
-  unitId: string | null;
-  baseUnitId: string;
-  baseUnitName: string;
-  units: SellUnit[];
-  qty: string;
-  unitCost: string;
+  choices: UnitChoice[];
+  state: UnitLineState;
 }
+
+let lineCounter = 0;
 
 /** مسودة فاتورة شراء. الحسابات (الإجماليات والخصم) في Rust عند الحفظ والعرض. */
 export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | null; onClose: () => void; onSaved: () => void }) {
@@ -30,13 +31,15 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
   const [discKind, setDiscKind] = useState<"amount" | "percent">("amount");
   const [discValue, setDiscValue] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [s, w] = await Promise.all([api.listSuppliers(), api.listWarehouses()]);
+        const [s, w, allUnits] = await Promise.all([api.listSuppliers(), api.listWarehouses(), api.listUnits()]);
+        setUnits(allUnits);
         const as = s.filter((x) => x.isActive);
         const aw = w.filter((x) => x.isActive);
         setSuppliers(as);
@@ -50,13 +53,29 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
           setInvoiceNo(d.header.supplierInvoiceNo);
           setNote(d.note);
           if (d.discountMinor > 0) setDiscValue(minorToInput(d.discountMinor));
-          setLines(
-            d.items.map((i) => ({
-              productId: i.productId, variantId: i.variantId, name: i.nameAr + (i.variantName ? ` — ${i.variantName}` : ""),
-              unitId: i.unitId, baseUnitId: i.unitId, baseUnitName: i.unitName, units: [],
-              qty: milliToInput(i.qtyMilli), unitCost: minorToInput(i.unitCostMinor),
-            })),
-          );
+          const cache = new Map<string, ProductDetail>();
+          const built: Line[] = [];
+          for (const i of d.items) {
+            let det = cache.get(i.productId);
+            if (!det) {
+              det = await api.getProduct(i.productId);
+              cache.set(i.productId, det);
+            }
+            const choices = buildChoices(det, allUnits, i.variantId, true);
+            const c = choices.find((x) => x.unitId === i.unitId) ?? choices[0];
+            const base = lineForChoice(c, milliToInput(i.qtyMilli));
+            built.push({
+              key: `l${lineCounter++}`, productId: i.productId, variantId: i.variantId,
+              name: i.nameAr + (i.variantName ? ` — ${i.variantName}` : ""), choices,
+              state: {
+                ...base,
+                factor: c.isBase ? "1" : String(i.unitFactorMicro / 1_000_000),
+                cost: minorToInput(i.unitCostMinor),
+                salePrice: i.newSalePriceMinor != null ? minorToInput(i.newSalePriceMinor) : base.salePrice,
+              },
+            });
+          }
+          setLines(built);
         }
       } catch (e) {
         setError(String(e));
@@ -75,10 +94,20 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
         supplierInvoiceNo: invoiceNo,
         note,
         discount: discValue.trim() ? { kind: discKind, value: discValue } : null,
-        items: lines.map((l) => ({
-          productId: l.productId, variantId: l.variantId,
-          unitId: l.unitId === l.baseUnitId ? null : l.unitId, qty: l.qty, unitCost: l.unitCost,
-        })),
+        items: lines.map((l) => {
+          const c = l.choices.find((x) => x.unitId === l.state.unitId) ?? l.choices[0];
+          const price = l.state.salePrice.trim();
+          const changed = price !== "" && price !== l.state.origSalePrice;
+          return {
+            productId: l.productId,
+            variantId: l.variantId,
+            unitId: c.isBase ? null : c.unitId,
+            qty: l.state.qty,
+            unitCost: l.state.cost,
+            factor: c.isBase ? undefined : l.state.factor,
+            salePrice: changed ? price : undefined,
+          };
+        }),
       });
       onSaved();
     } catch (e) {
@@ -87,7 +116,18 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
     }
   }
 
-  const upd = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  async function addLine(sel: Sellable) {
+    try {
+      const det = await api.getProduct(sel.productId);
+      const choices = buildChoices(det, units, sel.variantId, true);
+      setLines((ls) => [...ls, {
+        key: `l${lineCounter++}`, productId: sel.productId, variantId: sel.variantId,
+        name: sel.nameAr + (sel.variantName ? ` — ${sel.variantName}` : ""), choices, state: lineForChoice(choices[0]),
+      }]);
+    } catch (e) {
+      setError(String(e));
+    }
+  }
 
   return (
     <Modal title={id ? "تعديل مسودة شراء" : "فاتورة شراء جديدة"} onClose={onClose} wide>
@@ -109,38 +149,25 @@ export default function PurchaseEditor({ id, onClose, onSaved }: { id: string | 
             <input className={`${inputClass} mt-1`} value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} />
           </label>
         </div>
-        <ItemPicker
-          onPick={(s) =>
-            setLines((ls) => [...ls, {
-              productId: s.productId, variantId: s.variantId, name: s.nameAr + (s.variantName ? ` — ${s.variantName}` : ""),
-              unitId: s.baseUnitId, baseUnitId: s.baseUnitId, baseUnitName: s.baseUnitName, units: s.units,
-              qty: "1", unitCost: "",
-            }])
-          }
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-slate-500"><tr><th className="p-2 text-start">الصنف</th><th className="p-2 text-start">الوحدة</th><th className="p-2 text-start">الكمية</th><th className="p-2 text-start">تكلفة الوحدة (ج.م)</th><th /></tr></thead>
-            <tbody>
-              {lines.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-slate-400">ابحث وأضف أصنافًا.</td></tr>}
-              {lines.map((l, i) => (
-                <tr key={i} className="border-t border-slate-100 dark:border-slate-700">
-                  <td className="p-2">{l.name}</td>
-                  <td className="p-2">
-                    {l.units.length > 1 ? (
-                      <select className={inputClass} value={l.unitId ?? ""} onChange={(e) => upd(i, { unitId: e.target.value })}>
-                        {l.units.map((u) => <option key={u.unitId} value={u.unitId}>{u.nameAr}{u.factorMicro !== 1_000_000 ? ` (×${microToInput(u.factorMicro)})` : ""}</option>)}
-                      </select>
-                    ) : l.baseUnitName}
-                  </td>
-                  <td className="p-2 w-28"><input className={inputClass} dir="ltr" inputMode="decimal" value={l.qty} onChange={(e) => upd(i, { qty: e.target.value })} /></td>
-                  <td className="p-2 w-36"><input className={inputClass} dir="ltr" inputMode="decimal" value={l.unitCost} onChange={(e) => upd(i, { unitCost: e.target.value })} /></td>
-                  <td className="p-2"><button aria-label="حذف" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><Trash2 size={16} /></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <ItemPicker onPick={(sel) => void addLine(sel)} />
+        <div className="space-y-3">
+          {lines.length === 0 && <p className="p-4 text-center text-sm text-slate-400">ابحث وأضف أصنافًا.</p>}
+          {lines.map((l) => (
+            <div key={l.key} className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+              <div className="mb-2 flex items-center justify-between text-sm font-semibold">
+                <span>{l.name}</span>
+                <button aria-label="حذف" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><Trash2 size={16} /></button>
+              </div>
+              <UnitLineFields
+                choices={l.choices}
+                value={l.state}
+                isVariant={l.variantId !== null}
+                onChange={(st) => setLines((ls) => ls.map((x) => (x.key === l.key ? { ...x, state: st } : x)))}
+              />
+            </div>
+          ))}
         </div>
+        <p className="text-xs text-slate-500">الفاتورة تُحفظ دائمًا كمسودة. المخزون والتكلفة وأسعار البيع لا تتغير إلا عند الضغط على «استلام».</p>
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="text-sm">خصم الفاتورة
             <div className="mt-1 flex gap-2">

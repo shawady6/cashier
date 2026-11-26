@@ -36,9 +36,11 @@ export const productSchema = z.object({
   units: z.array(
     z.object({
       unitId: z.string().min(1, "اختر الوحدة"),
-      factor: num("المعامل"),
+      factor: z.string().trim().regex(/^[0-9٠-٩]+$/, "عدد القطع رقم صحيح").refine((v) => Number(v.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))) >= 2, "عدد القطع 2 أو أكثر"),
       isPurchaseUnit: z.boolean(),
       isSaleUnit: z.boolean(),
+      salePrice: optionalNum("سعر بيع الوحدة"),
+      barcode: z.string(),
     }),
   ),
 });
