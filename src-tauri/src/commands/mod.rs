@@ -1,10 +1,12 @@
 //! أوامر Tauri: طبقة رفيعة تستدعي وحدات المنطق.
 
+mod backup;
 mod catalog;
 mod finance;
 mod inventory;
 mod reports;
 mod sales;
+pub use backup::*;
 pub use catalog::*;
 pub use finance::*;
 pub use inventory::*;

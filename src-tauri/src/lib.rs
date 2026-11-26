@@ -20,8 +20,18 @@ pub fn run() {
             let log_guard = app_core::logging::init(&data_dir.join("logs"))?;
             tracing::info!("بدء تشغيل التطبيق، مجلد البيانات: {}", data_dir.display());
 
-            let pool = tauri::async_runtime::block_on(database::init(&data_dir.join("pos.db")))?;
+            // استعادة معلّقة من تشغيل سابق: تُطبَّق قبل فتح القاعدة، وأي فشل يترك القاعدة الحالية.
+            match tauri::async_runtime::block_on(modules::backup::apply_pending_restore(&data_dir)) {
+                Ok(true) => tracing::info!("تمت استعادة النسخة الاحتياطية"),
+                Ok(false) => {}
+                Err(e) => tracing::error!("{e}"),
+            }
+
+            let pool = tauri::async_runtime::block_on(database::init(&data_dir.join(modules::backup::DB_FILE)))?;
             tracing::info!("قاعدة البيانات جاهزة");
+
+            let current = tauri::async_runtime::block_on(modules::settings::get_all(&pool)).unwrap_or_default();
+            tauri::async_runtime::block_on(modules::backup::run_auto_if_due(&pool, &data_dir, &current));
 
             app.manage(AppState {
                 db: pool,
@@ -59,6 +69,11 @@ pub fn run() {
             commands::list_suspended_sales,
             commands::resume_sale,
             commands::discard_suspended_sale,
+            commands::list_backups,
+            commands::create_backup,
+            commands::check_backup,
+            commands::delete_backup,
+            commands::restore_backup,
             commands::report_sales,
             commands::report_product_profit,
             commands::report_purchases,

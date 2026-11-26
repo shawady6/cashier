@@ -22,6 +22,9 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "receipt_paper_width",
     "pos_shortcuts",
     "require_cash_session",
+    "backup_auto_enabled",
+    "backup_keep_count",
+    "backup_external_dir",
 ];
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -126,6 +129,22 @@ async fn validate(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppEr
             }
         }
         "pos_shortcuts" => validate_shortcuts(value)?,
+        "backup_auto_enabled" => {
+            if !["0", "1"].contains(&value) {
+                return Err(bad("القيمة يجب أن تكون 0 أو 1"));
+            }
+        }
+        "backup_keep_count" => {
+            let ok = value.parse::<i64>().map(|v| (3..=365).contains(&v)).unwrap_or(false);
+            if !ok {
+                return Err(bad("عدد النسخ المحتفظ بها بين 3 و 365"));
+            }
+        }
+        "backup_external_dir" => {
+            if value.chars().count() > 260 || value.contains('\0') {
+                return Err(bad("مسار المجلد غير صالح"));
+            }
+        }
         "business_profile_code" => {
             let found: Option<i64> =
                 sqlx::query_scalar("SELECT 1 FROM business_profiles WHERE code = ?1")
@@ -178,7 +197,9 @@ mod tests {
         let s = get_all(&pool).await.unwrap();
         assert_eq!(s.get("currency").map(String::as_str), Some("EGP"));
         assert_eq!(s.get("allow_negative_stock").map(String::as_str), Some("0"));
-        assert_eq!(s.len(), ALLOWED_KEYS.len());
+        // مفاتيح النسخ الاحتياطي اختيارية: غيابها يعني القيم الافتراضية في الكود.
+        let seeded = ALLOWED_KEYS.iter().filter(|k| !k.starts_with("backup_")).count();
+        assert_eq!(s.len(), seeded);
     }
 
     #[tokio::test]

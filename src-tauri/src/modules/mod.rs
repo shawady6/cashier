@@ -1,3 +1,4 @@
+pub mod backup;
 pub mod finance;
 pub mod inventory;
 pub mod lookups;
