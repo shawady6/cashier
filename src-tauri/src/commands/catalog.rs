@@ -43,6 +43,11 @@ pub async fn get_product(state: State<'_, AppState>, id: String) -> Result<Produ
 }
 
 #[tauri::command]
+pub fn preview_product_prices(input: products::validate::PricePreviewInput) -> products::validate::PricePreview {
+    products::validate::preview_prices(&input)
+}
+
+#[tauri::command]
 pub async fn save_product(state: State<'_, AppState>, input: ProductInput) -> Result<String, AppError> {
     products::save(&state.db, &input).await
 }

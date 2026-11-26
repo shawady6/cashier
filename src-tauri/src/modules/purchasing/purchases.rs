@@ -294,7 +294,9 @@ pub async fn get(pool: &SqlitePool, id: &str) -> Result<PurchaseDetail, AppError
     .await?;
     let items = sqlx::query_as::<_, PurchaseItemDetail>(
         "SELECT pi.id, pi.line_no, pi.product_id, pi.variant_id, pi.name_ar, pi.variant_name, pi.unit_id, pi.unit_name, \
-                pi.unit_factor_micro, pi.qty_milli, pi.base_qty_milli, pi.unit_cost_minor, pi.line_total_minor, pi.net_minor, pi.new_sale_price_minor, \
+                pi.unit_factor_micro, pi.qty_milli, pi.base_qty_milli, \
+                (SELECT bu.name_ar FROM products pr JOIN units bu ON bu.id = pr.base_unit_id WHERE pr.id = pi.product_id) AS base_unit_name, \
+                pi.unit_cost_minor, pi.line_total_minor, pi.net_minor, pi.new_sale_price_minor, \
                 COALESCE((SELECT SUM(qty_milli) FROM purchase_return_items WHERE purchase_item_id = pi.id), 0) AS returned_qty_milli \
          FROM purchase_items pi WHERE pi.purchase_id = ?1 ORDER BY pi.line_no",
     )

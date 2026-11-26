@@ -43,6 +43,7 @@ pub fn run() {
             commands::list_products,
             commands::get_product,
             commands::save_product,
+            commands::preview_product_prices,
             commands::set_product_archived,
             commands::find_product_by_barcode,
             commands::set_product_image,

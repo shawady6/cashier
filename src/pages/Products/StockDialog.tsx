@@ -31,7 +31,7 @@ export default function StockDialog({ product, onDone, onClose }: { product: Pro
   const needsVariant = (detail?.variants.filter((v) => v.isActive).length ?? 0) > 0;
   const choices = detail ? buildChoices(detail, units, needsVariant ? variantId : null, false) : [];
   const choice = choices.find((c) => c.unitId === line?.unitId) ?? choices[0];
-  const big = detail?.units[0] ? choices[1] : undefined;
+  const big = choices.find((c) => !c.isBase);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

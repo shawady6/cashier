@@ -99,6 +99,7 @@ export interface ProductUnitDetail {
   isSaleUnit: boolean;
   /** سعر بيع الوحدة الكبيرة بالقروش. null = سعر القطعة × العدد */
   salePriceMinor: number | null;
+  purchasePriceMinor: number | null;
   barcode: string | null;
 }
 
@@ -115,6 +116,11 @@ export interface ProductDetail {
   minStockQty: number;
   isWeighted: boolean;
   trackExpiry: boolean;
+  buyInBase: boolean;
+  sellInBase: boolean;
+  defaultBuyBig: boolean;
+  defaultSellBig: boolean;
+  priceSource: "manual" | "derived";
   isActive: boolean;
   archived: boolean;
   hasImage: boolean;
@@ -134,6 +140,11 @@ export interface ProductInput {
   baseUnitId: string;
   purchasePrice: string;
   salePrice: string;
+  marginPercent?: string | null;
+  buyInBase: boolean;
+  sellInBase: boolean;
+  defaultBuyBig: boolean;
+  defaultSellBig: boolean;
   minStockQty: string;
   isWeighted: boolean;
   trackExpiry: boolean;
@@ -149,7 +160,7 @@ export interface ProductInput {
     isActive: boolean;
     barcodes: string[];
   }[];
-  units: { unitId: string; factor: string; isPurchaseUnit: boolean; isSaleUnit: boolean; salePrice?: string; barcode?: string }[];
+  units: { unitId: string; factor: string; isPurchaseUnit: boolean; isSaleUnit: boolean; salePrice?: string; purchasePrice?: string; barcode?: string }[];
 }
 
 export interface SellUnit {
@@ -176,6 +187,24 @@ export interface Sellable {
   units: SellUnit[];
   /** وحدة باركود الوحدة الكبيرة لو طابقه البحث */
   matchedUnitId: string | null;
+  /** الوحدة التي يُضاف بها الصنف عند اختياره (حسب إعداد المنتج) */
+  defaultUnitId: string;
+}
+
+export interface PricePreviewInput {
+  factor?: string;
+  pieceSale?: string;
+  pieceCost?: string;
+  bigSale?: string;
+  bigPurchase?: string;
+  marginPercent?: string;
+}
+
+export interface PricePreview {
+  piecePrice: number | null;
+  pieceCost: number | null;
+  bigSale: number | null;
+  source: "manual" | "derived" | null;
 }
 
 export interface DiscountInput {
@@ -345,7 +374,7 @@ export interface PurchaseRow {
 }
 export interface PurchaseItemDetail {
   id: string; lineNo: number; productId: string; variantId: string | null; nameAr: string; variantName: string | null;
-  unitId: string; unitName: string; unitFactorMicro: number; qtyMilli: number; baseQtyMilli: number; unitCostMinor: number; lineTotalMinor: number; netMinor: number;
+  unitId: string; unitName: string; unitFactorMicro: number; qtyMilli: number; baseQtyMilli: number; baseUnitName: string; unitCostMinor: number; lineTotalMinor: number; netMinor: number;
   newSalePriceMinor: number | null; returnedQtyMilli: number;
 }
 export interface PurchaseDetail {
@@ -415,6 +444,8 @@ export const api = {
   resumeSale: (id: string) => invoke<SuspendedSale>("resume_sale", { id }),
   discardSuspendedSale: (id: string) => invoke<void>("discard_suspended_sale", { id }),
   adjustStock: (input: AdjustInput) => invoke<void>("adjust_stock", { input }),
+  adjustStockMany: (inputs: AdjustInput[]) => invoke<void>("adjust_stock_many", { inputs }),
+  previewProductPrices: (input: PricePreviewInput) => invoke<PricePreview>("preview_product_prices", { input }),
   listWarehouses: () => invoke<Warehouse[]>("list_warehouses"),
   saveWarehouse: (input: { id?: string; nameAr: string; isActive: boolean; isDefault: boolean }) =>
     invoke<string>("save_warehouse", { input }),

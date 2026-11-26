@@ -6,7 +6,7 @@ import { formatMoney, formatQty } from "../../lib/format";
 import { api, type PurchaseDetail } from "../../services/api";
 import { statusLabel } from "./index";
 
-export default function PurchaseView({ id, onClose }: { id: string; onClose: () => void }) {
+export default function PurchaseView({ id, onClose, startConfirm = false }: { id: string; onClose: () => void; startConfirm?: boolean }) {
   const [d, setD] = useState<PurchaseDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -14,6 +14,7 @@ export default function PurchaseView({ id, onClose }: { id: string; onClose: () 
   const [payMethod, setPayMethod] = useState<"cash" | "card">("cash");
   const [retQty, setRetQty] = useState<Record<string, string>>({});
   const [showReturn, setShowReturn] = useState(false);
+  const [confirming, setConfirming] = useState(startConfirm);
 
   const load = useCallback(() => {
     api.getPurchase(id).then(setD).catch((e) => setError(String(e)));
@@ -34,6 +35,8 @@ export default function PurchaseView({ id, onClose }: { id: string; onClose: () 
 
   if (!d) return <Modal title="فاتورة شراء" onClose={onClose}>{error ? <Alert kind="error">{error}</Alert> : "جارٍ التحميل..."}</Modal>;
   const received = d.header.status === "received";
+  const isDraft = d.header.status === "draft";
+  const priceChanges = d.items.filter((i) => i.newSalePriceMinor != null);
 
   return (
     <Modal title={`فاتورة شراء ${d.header.purchaseNo}`} onClose={onClose} wide>
@@ -52,7 +55,10 @@ export default function PurchaseView({ id, onClose }: { id: string; onClose: () 
             {d.items.map((i) => (
               <tr key={i.id} className="border-t border-slate-100 dark:border-slate-700">
                 <td className="p-2">{i.nameAr}{i.variantName ? ` — ${i.variantName}` : ""}</td>
-                <td className="p-2">{formatQty(i.qtyMilli)} {i.unitName}</td>
+                <td className="p-2">
+                  {formatQty(i.qtyMilli)} {i.unitName}
+                  {i.unitFactorMicro !== 1_000_000 && <span className="block text-xs text-slate-500">= {formatQty(i.baseQtyMilli)} {i.baseUnitName}</span>}
+                </td>
                 <td className="p-2">{formatMoney(i.unitCostMinor)}</td>
                 <td className="p-2">{formatMoney(i.netMinor)}</td>
                 <td className="p-2">{i.returnedQtyMilli ? formatQty(i.returnedQtyMilli) : ""}</td>
@@ -109,10 +115,28 @@ export default function PurchaseView({ id, onClose }: { id: string; onClose: () 
           </div>
         )}
 
-        {d.header.status === "draft" && (
+        {isDraft && !confirming && (
           <div className="flex justify-end gap-2">
             <button className={btnGhost} onClick={() => run(async () => { await api.cancelPurchaseDraft(d.header.id); onClose(); }, "تم الإلغاء")}>إلغاء المسودة</button>
-            <button className={btnPrimary} onClick={() => run(() => api.receivePurchase(d.header.id), "تم استلام الفاتورة وتحديث المخزن")}>استلام</button>
+            <button className={btnPrimary} onClick={() => setConfirming(true)}>استلام</button>
+          </div>
+        )}
+        {isDraft && confirming && (
+          <div className="space-y-3 rounded-lg border border-teal-300 bg-teal-50 p-3 text-sm dark:border-teal-700 dark:bg-teal-950/30">
+            <h4 className="font-semibold">تأكيد الاستلام</h4>
+            <div>سيُضاف إلى {d.warehouseName}: <b>{d.items.length}</b> صنف بإجمالي <b>{formatMoney(d.header.totalMinor)}</b>، وتتحدّث التكلفة المتوسطة.</div>
+            {priceChanges.length > 0 && (
+              <div>
+                <div className="font-semibold">أسعار البيع التي ستتحدّث:</div>
+                <ul className="list-inside list-disc">
+                  {priceChanges.map((i) => <li key={i.id}>{i.nameAr}{i.variantName ? ` — ${i.variantName}` : ""}: {i.unitName} ← {formatMoney(i.newSalePriceMinor as number)}</li>)}
+                </ul>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button className={btnGhost} onClick={() => setConfirming(false)}>رجوع</button>
+              <button className={btnPrimary} onClick={() => run(async () => { await api.receivePurchase(d.header.id); setConfirming(false); }, "تم استلام الفاتورة وتحديث المخزن")}>تأكيد الاستلام</button>
+            </div>
           </div>
         )}
       </div>

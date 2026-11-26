@@ -103,6 +103,7 @@ pub struct PurchaseItemDetail {
     pub unit_factor_micro: i64,
     pub qty_milli: i64,
     pub base_qty_milli: i64,
+    pub base_unit_name: String,
     pub unit_cost_minor: i64,
     pub line_total_minor: i64,
     pub net_minor: i64,

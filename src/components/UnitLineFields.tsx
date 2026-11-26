@@ -16,9 +16,10 @@ export default function UnitLineFields({
   showSalePrice?: boolean;
 }) {
   const choice = choices.find((c) => c.unitId === value.unitId) ?? choices[0];
-  const base = choices[0];
+  const base = { nameAr: choice.baseName };
   const pv = previewLine(choice, value, isVariant);
   const set = (p: Partial<UnitLineState>) => onChange({ ...value, ...p });
+  const showSale = showSalePrice && !(isVariant && !choice.isBase);
 
   return (
     <div className="space-y-2">
@@ -46,7 +47,7 @@ export default function UnitLineFields({
         <label className="text-xs text-slate-500">تكلفة {choice.nameAr} (ج.م)
           <input className={`${inputClass} mt-1`} dir="ltr" inputMode="decimal" value={value.cost} onChange={(e) => set({ cost: e.target.value })} />
         </label>
-        {showSalePrice && (
+        {showSale && (
           <label className="text-xs text-slate-500">سعر بيع {choice.nameAr} (ج.م)
             <input className={`${inputClass} mt-1`} dir="ltr" inputMode="decimal" value={value.salePrice} onChange={(e) => set({ salePrice: e.target.value })} />
           </label>
@@ -57,14 +58,11 @@ export default function UnitLineFields({
           {choice.isBase
             ? `${value.qty} ${choice.nameAr} · تكلفة القطعة ${fmt2(pv.costPerPiece)}`
             : `${value.qty} ${choice.nameAr} × ${value.factor} = ${pv.basePieces} ${base.nameAr}، تكلفة ${base.nameAr} ${fmt2(pv.costPerPiece)}`}
-          {showSalePrice && value.salePrice.trim() ? `، سعر بيع ${choice.nameAr} ${value.salePrice}` : ""}
+          {showSale && value.salePrice.trim() ? `، سعر بيع ${choice.nameAr} ${value.salePrice}` : ""}
         </p>
       )}
-      {showSalePrice && pv?.below && <p className="text-xs font-semibold text-amber-600">تنبيه: سعر البيع أقل من سعر الشراء.</p>}
-      {showSalePrice && pv?.priceChanges && <p className="text-xs font-semibold text-teal-700">سيتم تحديث سعر البيع عند الاستلام.</p>}
-      {showSalePrice && isVariant && !choice.isBase && value.salePrice.trim() !== value.origSalePrice && (
-        <p className="text-xs text-slate-500">سعر الوحدة الكبيرة لا يُحدَّث للمنتجات ذات المتغيرات.</p>
-      )}
+      {showSale && pv?.below && <p className="text-xs font-semibold text-amber-600">تنبيه: سعر البيع أقل من سعر الشراء.</p>}
+      {showSale && pv?.priceChanges && <p className="text-xs font-semibold text-teal-700">سيتم تحديث سعر البيع عند الاستلام.</p>}
     </div>
   );
 }

@@ -288,3 +288,50 @@ pub fn parse(input: &ProductInput) -> Result<Parsed<'_>, AppError> {
         units,
     })
 }
+
+/// معاينة الأسعار المحسوبة لنموذج المنتج: نفس قواعد الحفظ بالضبط، والمدخلات الناقصة أو الخاطئة تعطي فراغًا بدل خطأ.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PricePreviewInput {
+    pub factor: Option<String>,
+    pub piece_sale: Option<String>,
+    pub piece_cost: Option<String>,
+    pub big_sale: Option<String>,
+    pub big_purchase: Option<String>,
+    pub margin_percent: Option<String>,
+}
+
+#[derive(Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PricePreview {
+    pub piece_price: Option<i64>,
+    pub piece_cost: Option<i64>,
+    pub big_sale: Option<i64>,
+    pub source: Option<String>,
+}
+
+fn opt_minor(v: &Option<String>) -> Option<i64> {
+    v.as_deref().map(str::trim).filter(|s| !s.is_empty()).and_then(|s| parse_minor(s).ok())
+}
+
+pub fn preview_prices(i: &PricePreviewInput) -> PricePreview {
+    let factor = i
+        .factor
+        .as_deref()
+        .and_then(|f| crate::app_core::quantity::parse_factor(f).ok())
+        .filter(|f| *f >= 2_000_000);
+    let big_sale = opt_minor(&i.big_sale);
+    let big_purchase = opt_minor(&i.big_purchase);
+    let margin = i.margin_percent.as_deref().map(str::trim).filter(|s| !s.is_empty()).and_then(|s| parse_percent_bp(s).ok());
+    let typed_cost = opt_minor(&i.piece_cost);
+    let piece_cost = match (typed_cost, factor.zip(big_purchase)) {
+        (Some(c), _) => Some(c),
+        (None, Some((f, c))) => Some(piece_cost_from_big(c, f)),
+        _ => None,
+    };
+    let big = factor.map(|f| (f, big_sale, big_purchase));
+    match resolve_prices(opt_minor(&i.piece_sale), big, margin, piece_cost.unwrap_or(0)) {
+        Some(r) => PricePreview { piece_price: Some(r.piece_price), piece_cost, big_sale: r.big_sale_price, source: Some(r.source.into()) },
+        None => PricePreview { piece_cost, big_sale, ..Default::default() },
+    }
+}
