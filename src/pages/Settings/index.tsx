@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import AccordionSection from "../../components/AccordionSection";
 import PageHeader from "../../components/PageHeader";
 import AboutSection from "./AboutSection";
+import BackupSection from "./BackupSection";
 import PosSettings from "./PosSettings";
 import { api, type BusinessProfile } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
@@ -58,7 +59,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl space-y-3">
+    <div className="max-w-3xl space-y-3">
       <PageHeader title="الإعدادات" />
       {msg && (
         <div
@@ -152,6 +153,9 @@ export default function SettingsPage() {
 
       <AccordionSection id="pos" title="الكاشير والإيصال" open={openId === "pos"} onToggle={toggle}>
         <PosSettings />
+      </AccordionSection>
+      <AccordionSection id="backup" title="النسخ الاحتياطي والاستعادة" open={openId === "backup"} onToggle={toggle}>
+        <BackupSection />
       </AccordionSection>
       <AccordionSection id="about" title="حول البرنامج" open={openId === "about"} onToggle={toggle}>
         <AboutSection />
