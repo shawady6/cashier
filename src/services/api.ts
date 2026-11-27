@@ -489,12 +489,22 @@ export interface CustomerInput {
 export interface StatementRow { date: string; kind: "sale" | "payment" | "return"; refNo: string; debitMinor: number; creditMinor: number; balanceMinor: number }
 export interface Statement { customer: Customer; rows: StatementRow[] }
 
+export type BackupLocation = "local" | "external";
+export interface BackupInfo { fileName: string; kind: "manual" | "auto" | "pre-migration" | "pre-restore"; location: BackupLocation; sizeBytes: number; modifiedAt: number }
+export interface BackupCheck { ok: boolean; message: string; migrations: number }
+export interface BackupResult { backup: BackupInfo; externalCopied: boolean; externalError: string | null }
+
 /** كل الحسابات والتحقق في Rust. هذه الطبقة مجرد جسر للأوامر. */
 export const api = {
   getAppInfo: () => invoke<AppInfo>("get_app_info"),
   getDbHealth: () => invoke<DbHealth>("get_db_health"),
   getSettings: () => invoke<Record<string, string>>("get_settings"),
   setSetting: (key: string, value: string) => invoke<void>("set_setting", { key, value }),
+  listBackups: () => invoke<BackupInfo[]>("list_backups"),
+  createBackup: () => invoke<BackupResult>("create_backup"),
+  checkBackup: (location: BackupLocation, fileName: string) => invoke<BackupCheck>("check_backup", { location, fileName }),
+  deleteBackup: (location: BackupLocation, fileName: string) => invoke<void>("delete_backup", { location, fileName }),
+  restoreBackup: (location: BackupLocation, fileName: string) => invoke<BackupInfo>("restore_backup", { location, fileName }),
   listBusinessProfiles: () => invoke<BusinessProfile[]>("list_business_profiles"),
   listLookups: (kind: LookupKind) => invoke<LookupItem[]>("list_lookups", { kind }),
   saveLookup: (kind: LookupKind, input: LookupInput) => invoke<string>("save_lookup", { kind, input }),

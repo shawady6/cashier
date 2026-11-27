@@ -25,6 +25,10 @@ static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
 /// عدد نسخ ما قبل التحديث المحفوظة؛ الأقدم تُحذف.
 const KEEP_PRE_MIGRATION_BACKUPS: usize = 5;
 
+pub fn migration_count() -> i64 {
+    MIGRATOR.iter().count() as i64
+}
+
 pub async fn init(path: &Path) -> Result<SqlitePool, AppError> {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)

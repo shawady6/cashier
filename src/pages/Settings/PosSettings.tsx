@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import Alert from "../../components/Alert";
-import { btnPrimary, cardClass, inputClass } from "../../components/ui";
+import { btnPrimary, inputClass } from "../../components/ui";
 import { DEFAULT_SHORTCUTS, parseShortcuts, SHORTCUT_LABELS, type ShortcutAction } from "../../lib/shortcuts";
 import { useSettingsStore } from "../../store/settingsStore";
 
@@ -41,8 +41,7 @@ export default function PosSettings() {
   }
 
   return (
-    <section className={`${cardClass} space-y-4 p-5`}>
-      <h3 className="font-semibold">الكاشير والإيصال</h3>
+    <>
       {msg && <Alert kind={msg.ok ? "ok" : "error"}>{msg.text}</Alert>}
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block text-sm">
@@ -92,6 +91,6 @@ export default function PosSettings() {
       >
         حفظ إعدادات الكاشير
       </button>
-    </section>
+    </>
   );
 }
