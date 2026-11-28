@@ -39,6 +39,39 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Validate signing key
+        if: env.TAURI_SIGNING_PRIVATE_KEY != ''
+        shell: pwsh
+        run: |
+          $key = ($env:TAURI_SIGNING_PRIVATE_KEY -replace '\s', '')
+          $pw = $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          if ($null -ne $pw) { $pw = $pw.TrimEnd("`r", "`n") }
+          $problem = $null
+          try {
+            $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($key))
+            $header = ($text -split "`n")[0].Trim()
+            Write-Host "key length: $($key.Length)"
+            Write-Host "key header: $header"
+            if ($header -notmatch 'secret key') { $problem = "TAURI_SIGNING_PRIVATE_KEY ليس مفتاحًا خاصًا (الرأس: $header). الصق محتوى pos.key وليس pos.key.pub" }
+          } catch {
+            $problem = "TAURI_SIGNING_PRIVATE_KEY ليس base64 صالحًا. الصق محتوى pos.key كاملًا"
+          }
+          if (-not $problem) {
+            "TAURI_SIGNING_PRIVATE_KEY=$key" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$pw" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+            $env:TAURI_SIGNING_PRIVATE_KEY = $key
+            $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $pw
+            'probe' | Set-Content probe.txt
+            npx tauri signer sign probe.txt
+            if ($LASTEXITCODE -ne 0) { $problem = "كلمة السر TAURI_SIGNING_PRIVATE_KEY_PASSWORD لا تطابق المفتاح" }
+          }
+          if ($problem) {
+            Write-Host "::warning::$problem. سيُبنى البرنامج بدون توقيع وبدون تحديثات."
+            "TAURI_SIGNING_PRIVATE_KEY=" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          } else {
+            Write-Host "مفتاح التوقيع سليم"
+          }
+
       - name: Typecheck and build frontend
         run: npm run build
 
