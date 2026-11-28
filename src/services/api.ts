@@ -494,6 +494,9 @@ export interface BackupInfo { fileName: string; kind: "manual" | "auto" | "pre-m
 export interface BackupCheck { ok: boolean; message: string; migrations: number }
 export interface BackupResult { backup: BackupInfo; externalCopied: boolean; externalError: string | null }
 
+export interface PrinterInfo { name: string; isDefault: boolean }
+export interface RasterInput { width: number; height: number; dataBase64: string }
+
 /** كل الحسابات والتحقق في Rust. هذه الطبقة مجرد جسر للأوامر. */
 export const api = {
   getAppInfo: () => invoke<AppInfo>("get_app_info"),
@@ -505,6 +508,9 @@ export const api = {
   checkBackup: (location: BackupLocation, fileName: string) => invoke<BackupCheck>("check_backup", { location, fileName }),
   deleteBackup: (location: BackupLocation, fileName: string) => invoke<void>("delete_backup", { location, fileName }),
   restoreBackup: (location: BackupLocation, fileName: string) => invoke<BackupInfo>("restore_backup", { location, fileName }),
+  listPrinters: () => invoke<PrinterInfo[]>("list_printers"),
+  printReceiptImage: (input: RasterInput, openDrawer: boolean) => invoke<void>("print_receipt_image", { input, openDrawer }),
+  openCashDrawer: () => invoke<void>("open_cash_drawer"),
   listBusinessProfiles: () => invoke<BusinessProfile[]>("list_business_profiles"),
   listLookups: (kind: LookupKind) => invoke<LookupItem[]>("list_lookups", { kind }),
   saveLookup: (kind: LookupKind, input: LookupInput) => invoke<string>("save_lookup", { kind, input }),

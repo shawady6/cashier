@@ -43,21 +43,10 @@ export default function PosSettings() {
   return (
     <>
       {msg && <Alert kind={msg.ok ? "ok" : "error"}>{msg.text}</Alert>}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4">
         <label className="block text-sm">
           نسبة الضريبة % (الأسعار شاملة الضريبة، 0 = بدون)
           <input inputMode="decimal" className={`${inputClass} mt-1`} value={tax} onChange={(e) => setTax(e.target.value)} />
-        </label>
-        <label className="block text-sm">
-          عرض ورق الطابعة
-          <select
-            className={`${inputClass} mt-1`}
-            value={settings.receipt_paper_width ?? "80"}
-            onChange={(e) => void save([["receipt_paper_width", e.target.value]], "تم حفظ عرض الورق")}
-          >
-            <option value="80">80 مم</option>
-            <option value="58">58 مم</option>
-          </select>
         </label>
       </div>
       <label className="block text-sm">

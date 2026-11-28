@@ -5,6 +5,7 @@ import { useSettingsStore } from "../store/settingsStore";
 import Alert from "./Alert";
 import Modal from "./Modal";
 import Receipt, { receiptSettings } from "./Receipt";
+import { isThermal, printSaleThermal } from "../lib/printing";
 import { btnGhost, btnPrimary } from "./ui";
 
 /** معاينة الإيصال وطباعته عبر طباعة ويندوز (تعمل مع أي طابعة لها تعريف في ويندوز). */
@@ -12,6 +13,25 @@ export default function ReceiptDialog({ saleId, onClose }: { saleId: string; onC
   const settings = useSettingsStore((s) => s.settings);
   const [sale, setSale] = useState<SaleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const thermal = isThermal(settings);
+
+  async function print() {
+    if (!sale) return;
+    if (!thermal) {
+      window.print();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await printSaleThermal(sale, receiptSettings(settings), false);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     api.getSale(saleId).then(setSale).catch((e) => setError(String(e)));
@@ -27,7 +47,7 @@ export default function ReceiptDialog({ saleId, onClose }: { saleId: string; onC
           </div>
           <div className="flex justify-end gap-2">
             <button className={btnGhost} onClick={onClose}>إغلاق</button>
-            <button className={btnPrimary} onClick={() => window.print()}>
+            <button className={btnPrimary} disabled={busy} onClick={() => void print()}>
               <Printer size={16} /> طباعة
             </button>
           </div>

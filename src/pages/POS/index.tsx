@@ -5,6 +5,9 @@ import Modal from "../../components/Modal";
 import ReceiptDialog from "../../components/ReceiptDialog";
 import { btnGhost, btnPrimary, cardClass, inputClass } from "../../components/ui";
 import { formatBigUnitStock, formatMoney, formatQty } from "../../lib/format";
+import { isThermal, printSaleThermal, shouldOpenDrawer } from "../../lib/printing";
+import { scannerConfig, useGlobalScan } from "../../lib/scanner";
+import { receiptSettings } from "../../components/Receipt";
 import { parseShortcuts } from "../../lib/shortcuts";
 import { stepQty } from "../../lib/qty";
 import { api, type CheckoutResult } from "../../services/api";
@@ -26,8 +29,26 @@ export default function PosPage() {
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
   const [message, setMessage] = useState<{ kind: "error" | "ok"; text: string } | null>(null);
   const searchRef = useRef<SearchBoxHandle>(null);
+  const allSettings = useSettingsStore((st) => st.settings);
+  useGlobalScan(scannerConfig(allSettings), !dialog && !done && !receiptFor, (code) => searchRef.current?.scan(code));
 
   const notify = useCallback((text: string, kind: "error" | "ok" = "error") => setMessage({ kind, text }), []);
+
+  /** بعد البيع: طباعة حرارية تلقائية وفتح الدُرج حسب الإعدادات. فشل الجهاز لا يلغي البيع. */
+  async function afterSale(r: CheckoutResult) {
+    if (r.duplicate) return;
+    const thermal = isThermal(allSettings);
+    const wantsPrint = thermal && allSettings.print_auto === "1";
+    if (!wantsPrint && allSettings.drawer_mode !== "cash" && allSettings.drawer_mode !== "always") return;
+    try {
+      const sale = await api.getSale(r.saleId);
+      const drawer = !!allSettings.printer_name && shouldOpenDrawer(allSettings, sale.payments.map((p) => p.method));
+      if (wantsPrint) await printSaleThermal(sale, receiptSettings(allSettings), drawer);
+      else if (drawer) await api.openCashDrawer();
+    } catch (e) {
+      notify(`تم البيع، لكن تعذر تشغيل الطابعة أو الدُرج: ${String(e)}`);
+    }
+  }
   const focusSearch = () => setTimeout(() => searchRef.current?.focus(), 0);
 
   const baseCart = useMemo(() => toCartInput(cart.lines, cart.invoiceDiscount), [cart.lines, cart.invoiceDiscount]);
@@ -203,7 +224,7 @@ export default function PosPage() {
           baseCart={baseCart}
           total={cart.quote.total}
           onClose={() => { setDialog(null); focusSearch(); }}
-          onDone={(r) => { setDialog(null); setDone(r); cart.clear(); }}
+          onDone={(r) => { setDialog(null); setDone(r); cart.clear(); void afterSale(r); }}
         />
       )}
       {dialog === "resume" && (
