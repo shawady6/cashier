@@ -119,7 +119,7 @@ mod tests {
         let d = tmp();
         let mut s = HashMap::new();
         let def = effective_backup_dir(&s, Some(&d), &d);
-        assert!(def.ends_with("POS System/Backups") && Path::new(&def).is_dir());
+        assert!(Path::new(&def).ends_with("POS System/Backups") && Path::new(&def).is_dir());
         s.insert("backup_external_dir".into(), "  E:\\Mine ".into());
         assert_eq!(effective_backup_dir(&s, Some(&d), &d), "E:\\Mine");
         assert_eq!(effective_backup_dir(&HashMap::new(), None, &d), "", "بدون مستندات لا نسخ إضافي افتراضي");
