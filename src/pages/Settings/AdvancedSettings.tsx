@@ -1,10 +1,12 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
+import Modal from "../../components/Modal";
 import Alert from "../../components/Alert";
 import { receiptSettings } from "../../components/Receipt";
 import { btnGhost, btnPrimary, inputClass } from "../../components/ui";
 import { renderTestPage } from "../../lib/receiptRaster";
 import { scannerConfig } from "../../lib/scanner";
-import { api, type PrinterInfo } from "../../services/api";
+import { api, type PrinterInfo, type UpdateInfo, type UpdateProgress } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
 
 type Msg = { ok: boolean; text: string } | null;
@@ -290,12 +292,136 @@ function ScannerPanel() {
   );
 }
 
+function formatMb(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toLocaleString("ar-EG", { maximumFractionDigits: 1 })} م.ب`;
+}
+
+function UpdatesPanel() {
+  const settings = useSettingsStore((s) => s.settings);
+  const { msg, setMsg, save } = useSave();
+  const [info, setInfo] = useState<UpdateInfo | null>(null);
+  const [version, setVersion] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgress | null>(null);
+
+  useEffect(() => {
+    api.getAppInfo().then((i) => setVersion(i.appVersion)).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    listen<UpdateProgress>("update-progress", (e) => setProgress(e.payload))
+      .then((fn) => {
+        off = fn;
+      })
+      .catch(() => undefined);
+    return () => off?.();
+  }, []);
+
+  async function check() {
+    setChecking(true);
+    setMsg(null);
+    setInfo(null);
+    try {
+      setInfo(await api.checkUpdate());
+    } catch (e) {
+      setMsg({ ok: false, text: String(e) });
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function install() {
+    setConfirm(false);
+    setInstalling(true);
+    setProgress(null);
+    setMsg(null);
+    try {
+      await api.installUpdate();
+      setMsg({ ok: true, text: "تم التنزيل وجارٍ تثبيت التحديث" });
+    } catch (e) {
+      setInstalling(false);
+      setMsg({ ok: false, text: String(e) });
+    }
+  }
+
+  const pct = progress?.total ? Math.min(100, Math.round((progress.downloaded / progress.total) * 100)) : null;
+
+  return (
+    <Group title="التحديثات">
+      {msg && <Alert kind={msg.ok ? "ok" : "error"}>{msg.text}</Alert>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="text-sm">
+          <div className="text-xs text-slate-500 dark:text-slate-400">الإصدار الحالي</div>
+          <div className="font-medium" dir="ltr">{version || "…"}</div>
+        </div>
+        <label className="block text-sm">
+          قناة التحديث
+          <select
+            className={`${inputClass} mt-1`}
+            value={settings.update_channel === "stable" ? "stable" : "test"}
+            onChange={(e) => {
+              setInfo(null);
+              void save([["update_channel", e.target.value]], "تم حفظ قناة التحديث");
+            }}
+          >
+            <option value="test">تجريبية (كل بيلد جديد)</option>
+            <option value="stable">مستقرة</option>
+          </select>
+        </label>
+      </div>
+      <button type="button" className={btnPrimary} disabled={checking || installing} onClick={() => void check()}>
+        {checking ? "جارٍ الفحص…" : "فحص التحديثات"}
+      </button>
+      {info && !info.available && <Alert kind="ok">أنت على أحدث إصدار</Alert>}
+      {info?.available && (
+        <div className="space-y-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-900">
+          <div>
+            يتوفر إصدار <span dir="ltr" className="font-semibold">{info.version}</span>
+            {info.date ? ` · ${new Date(info.date).toLocaleDateString("ar-EG")}` : ""}
+          </div>
+          {info.notes && <div className="whitespace-pre-wrap">{info.notes}</div>}
+          <button type="button" className={btnPrimary} disabled={installing} onClick={() => setConfirm(true)}>
+            تحديث الآن
+          </button>
+        </div>
+      )}
+      {installing && (
+        <div className="space-y-1 text-sm" role="status">
+          <div className="h-2 overflow-hidden rounded bg-slate-200 dark:bg-slate-700">
+            <div className="h-full bg-teal-600 transition-all" style={{ width: `${pct ?? 5}%` }} />
+          </div>
+          <div>{progress ? `${formatMb(progress.downloaded)}${progress.total ? ` من ${formatMb(progress.total)}` : ""}` : "جارٍ حفظ نسخة احتياطية…"}</div>
+        </div>
+      )}
+      {confirm && (
+        <Modal title="تحديث البرنامج" onClose={() => setConfirm(false)}>
+          <div className="space-y-4 text-sm">
+            <p>تُحفظ نسخة احتياطية من بياناتك أولًا، ثم يُنزَّل التحديث ويُثبَّت ويُعاد تشغيل البرنامج. أنهِ أي عملية بيع قبل المتابعة.</p>
+            <div className="flex gap-3">
+              <button type="button" className={btnPrimary} onClick={() => void install()}>
+                تحديث وإعادة التشغيل
+              </button>
+              <button type="button" className={btnGhost} onClick={() => setConfirm(false)}>
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </Group>
+  );
+}
+
 export default function AdvancedSettings() {
   return (
     <div className="space-y-4">
       <PrinterPanel />
       <DrawerPanel />
       <ScannerPanel />
+      <UpdatesPanel />
     </div>
   );
 }

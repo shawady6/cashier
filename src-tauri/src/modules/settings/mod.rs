@@ -35,6 +35,7 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "scanner_min_length",
     "scanner_max_gap_ms",
     "scanner_global",
+    "update_channel",
 ];
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -150,6 +151,11 @@ async fn validate(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppEr
                 return Err(bad("عدد النسخ المحتفظ بها بين 3 و 365"));
             }
         }
+        "update_channel" => {
+            if !["test", "stable"].contains(&value) {
+                return Err(bad("قناة التحديث غير مدعومة"));
+            }
+        }
         "printer_mode" => {
             if !["browser", "thermal"].contains(&value) {
                 return Err(bad("وضع الطباعة غير مدعوم"));
@@ -245,7 +251,7 @@ mod tests {
         assert_eq!(s.get("currency").map(String::as_str), Some("EGP"));
         assert_eq!(s.get("allow_negative_stock").map(String::as_str), Some("0"));
         // مفاتيح النسخ الاحتياطي اختيارية: غيابها يعني القيم الافتراضية في الكود.
-        let seeded = ALLOWED_KEYS.iter().filter(|k| !["backup_", "printer_", "print_", "drawer_", "scanner_"].iter().any(|p| k.starts_with(p))).count();
+        let seeded = ALLOWED_KEYS.iter().filter(|k| !["backup_", "printer_", "print_", "drawer_", "scanner_", "update_"].iter().any(|p| k.starts_with(p))).count();
         assert_eq!(s.len(), seeded);
     }
 

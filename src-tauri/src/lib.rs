@@ -12,6 +12,7 @@ use tauri::Manager;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             // قاعدة البيانات في مجلد بيانات التطبيق، وليس في مجلد التثبيت.
             let data_dir = app.path().app_data_dir()?;
@@ -77,6 +78,8 @@ pub fn run() {
             commands::list_printers,
             commands::print_receipt_image,
             commands::open_cash_drawer,
+            commands::check_update,
+            commands::install_update,
             commands::report_sales,
             commands::report_product_profit,
             commands::report_purchases,

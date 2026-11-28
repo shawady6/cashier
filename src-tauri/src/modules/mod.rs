@@ -8,6 +8,7 @@ pub mod purchasing;
 pub mod reports;
 pub mod sales;
 pub mod settings;
+pub mod updates;
 
 #[cfg(test)]
 pub mod test_helpers;
