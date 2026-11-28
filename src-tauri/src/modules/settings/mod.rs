@@ -25,6 +25,17 @@ pub const ALLOWED_KEYS: &[&str] = &[
     "backup_auto_enabled",
     "backup_keep_count",
     "backup_external_dir",
+    "printer_mode",
+    "printer_name",
+    "printer_cut",
+    "print_auto",
+    "print_copies",
+    "drawer_mode",
+    "drawer_pin",
+    "scanner_min_length",
+    "scanner_max_gap_ms",
+    "scanner_global",
+    "update_channel",
 ];
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -140,6 +151,48 @@ async fn validate(pool: &SqlitePool, key: &str, value: &str) -> Result<(), AppEr
                 return Err(bad("عدد النسخ المحتفظ بها بين 3 و 365"));
             }
         }
+        "update_channel" => {
+            if !["test", "stable"].contains(&value) {
+                return Err(bad("قناة التحديث غير مدعومة"));
+            }
+        }
+        "printer_mode" => {
+            if !["browser", "thermal"].contains(&value) {
+                return Err(bad("وضع الطباعة غير مدعوم"));
+            }
+        }
+        "printer_name" => {
+            if value.chars().count() > 200 || value.contains('\0') {
+                return Err(bad("اسم الطابعة غير صالح"));
+            }
+        }
+        "printer_cut" | "print_auto" | "drawer_pin" | "scanner_global" => {
+            if !["0", "1"].contains(&value) {
+                return Err(bad("القيمة يجب أن تكون 0 أو 1"));
+            }
+        }
+        "print_copies" => {
+            if !["1", "2", "3"].contains(&value) {
+                return Err(bad("عدد النسخ من 1 إلى 3"));
+            }
+        }
+        "drawer_mode" => {
+            if !["off", "cash", "always"].contains(&value) {
+                return Err(bad("وضع فتح الدُرج غير مدعوم"));
+            }
+        }
+        "scanner_min_length" => {
+            let ok = value.parse::<u32>().map(|v| (1..=30).contains(&v)).unwrap_or(false);
+            if !ok {
+                return Err(bad("أقل طول للباركود بين 1 و 30"));
+            }
+        }
+        "scanner_max_gap_ms" => {
+            let ok = value.parse::<u32>().map(|v| (10..=500).contains(&v)).unwrap_or(false);
+            if !ok {
+                return Err(bad("الفاصل الزمني بين 10 و 500 مللي ثانية"));
+            }
+        }
         "backup_external_dir" => {
             if value.chars().count() > 260 || value.contains('\0') {
                 return Err(bad("مسار المجلد غير صالح"));
@@ -198,7 +251,7 @@ mod tests {
         assert_eq!(s.get("currency").map(String::as_str), Some("EGP"));
         assert_eq!(s.get("allow_negative_stock").map(String::as_str), Some("0"));
         // مفاتيح النسخ الاحتياطي اختيارية: غيابها يعني القيم الافتراضية في الكود.
-        let seeded = ALLOWED_KEYS.iter().filter(|k| !k.starts_with("backup_")).count();
+        let seeded = ALLOWED_KEYS.iter().filter(|k| !["backup_", "printer_", "print_", "drawer_", "scanner_", "update_"].iter().any(|p| k.starts_with(p))).count();
         assert_eq!(s.len(), seeded);
     }
 

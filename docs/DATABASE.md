@@ -75,3 +75,10 @@ SQLite في `%APPDATA%\com.shawady.pos\pos.db`، وليست في مجلد الت
 - الملفات في `backups/`: `manual-*`, `auto-*` (يُحتفظ بآخر N)، `pre-migration-*` (آخر 5)، `pre-restore-*` (آخر 5). النسخ اليدوية لا تُحذف تلقائيًا.
 - الاستعادة: `pending-restore.db` بجوار `pos.db` يُفحص ويُستبدل عند بدء التشغيل التالي قبل فتح القاعدة، وتُحذف ملفات `-wal/-shm` القديمة.
 - يُرفض أي ملف تالف، أو ليس لهذا البرنامج، أو من إصدار بنية أحدث.
+
+## إعدادات الأجهزة والتحديث (بدون migration)
+- `printer_mode` (browser|thermal)، `printer_name`، `printer_cut`، `print_auto`، `print_copies` (1–3)، `receipt_paper_width` (58|80).
+- `drawer_mode` (off|cash|always)، `drawer_pin` (0|1).
+- `scanner_min_length` (1–30)، `scanner_max_gap_ms` (10–500)، `scanner_global`.
+- `update_channel` (test|stable). نسخ ما قبل التحديث: `backups/pre-update-*` (آخر 5).
+

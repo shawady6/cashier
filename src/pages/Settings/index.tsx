@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import AccordionSection from "../../components/AccordionSection";
 import PageHeader from "../../components/PageHeader";
+import AdvancedSettings from "./AdvancedSettings";
 import AboutSection from "./AboutSection";
 import BackupSection from "./BackupSection";
 import PosSettings from "./PosSettings";
@@ -156,6 +157,9 @@ export default function SettingsPage() {
       </AccordionSection>
       <AccordionSection id="backup" title="النسخ الاحتياطي والاستعادة" open={openId === "backup"} onToggle={toggle}>
         <BackupSection />
+      </AccordionSection>
+      <AccordionSection id="advanced" title="إعدادات متقدمة" open={openId === "advanced"} onToggle={toggle}>
+        <AdvancedSettings />
       </AccordionSection>
       <AccordionSection id="about" title="حول البرنامج" open={openId === "about"} onToggle={toggle}>
         <AboutSection />

@@ -3,15 +3,19 @@
 mod backup;
 mod catalog;
 mod finance;
+mod hardware;
 mod inventory;
 mod reports;
 mod sales;
+mod updates;
 pub use backup::*;
 pub use catalog::*;
 pub use finance::*;
+pub use hardware::*;
 pub use inventory::*;
 pub use reports::*;
 pub use sales::*;
+pub use updates::*;
 
 use std::collections::HashMap;
 

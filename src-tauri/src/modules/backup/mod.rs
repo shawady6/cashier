@@ -50,7 +50,7 @@ pub struct BackupResult {
     pub external_error: Option<String>,
 }
 
-const KINDS: &[&str] = &["manual", "auto", "pre-migration", "pre-restore"];
+const KINDS: &[&str] = &["manual", "auto", "pre-migration", "pre-restore", "pre-update"];
 
 fn kind_of(name: &str) -> Option<&'static str> {
     KINDS.iter().copied().find(|k| name.starts_with(&format!("{k}-")))
@@ -184,7 +184,7 @@ async fn stamp(pool: &SqlitePool) -> Result<(String, String), AppError> {
 /// ينشئ نسخة داخل مجلد البيانات، يفحصها، ثم ينسخها للمجلد الخارجي إن حُدد.
 /// فشل النسخ الخارجي لا يلغي النسخة المحلية السليمة، لكنه يُرجَع للمستخدم.
 pub async fn create_backup(pool: &SqlitePool, data_dir: &Path, kind: &str, ext: &str) -> Result<BackupResult, AppError> {
-    if !["manual", "auto", "pre-restore"].contains(&kind) {
+    if !["manual", "auto", "pre-restore", "pre-update"].contains(&kind) {
         return Err(AppError::Validation("نوع نسخة غير صالح".into()));
     }
     let dir = backups_dir(data_dir);

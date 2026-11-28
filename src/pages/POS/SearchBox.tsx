@@ -6,6 +6,7 @@ import { api, type Sellable } from "../../services/api";
 
 export interface SearchBoxHandle {
   focus: () => void;
+  scan: (code: string) => void;
 }
 
 /** حقل واحد للبحث والماسح: الماسح يكتب الباركود ثم Enter فيُضاف المنتج مباشرة. */
@@ -15,7 +16,7 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
     const [results, setResults] = useState<Sellable[]>([]);
     const [active, setActive] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
-    useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }));
+
 
     useEffect(() => {
       const q = text.trim();
@@ -36,8 +37,8 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
       inputRef.current?.focus();
     }
 
-    async function onEnter() {
-      const q = text.trim();
+    async function onEnter(code?: string) {
+      const q = (code ?? text).trim();
       if (!q) return;
       // بحث جديد وقت Enter: الماسح أسرع من تأخير البحث المباشر
       try {
@@ -55,6 +56,11 @@ const SearchBox = forwardRef<SearchBoxHandle, { onPick: (s: Sellable) => void; o
         onMessage(String(e));
       }
     }
+
+    useImperativeHandle(ref, () => ({
+      focus: () => inputRef.current?.focus(),
+      scan: (code: string) => void onEnter(code),
+    }));
 
     return (
       <div className="relative">

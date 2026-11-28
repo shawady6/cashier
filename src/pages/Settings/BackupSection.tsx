@@ -10,6 +10,7 @@ const KIND_LABEL: Record<BackupInfo["kind"], string> = {
   auto: "تلقائية",
   "pre-migration": "قبل التحديث",
   "pre-restore": "قبل الاستعادة",
+  "pre-update": "قبل التحديث",
 };
 
 const keyOf = (b: BackupInfo) => `${b.location}/${b.fileName}`;
