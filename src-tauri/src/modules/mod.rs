@@ -1,5 +1,6 @@
 pub mod backup;
 pub mod finance;
+pub mod hardware;
 pub mod inventory;
 pub mod lookups;
 pub mod products;
