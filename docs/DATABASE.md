@@ -81,4 +81,5 @@ SQLite في `%APPDATA%\com.shawady.pos\pos.db`، وليست في مجلد الت
 - `drawer_mode` (off|cash|always)، `drawer_pin` (0|1).
 - `scanner_min_length` (1–30)، `scanner_max_gap_ms` (10–500)، `scanner_global`.
 - `update_channel` (test|stable). نسخ ما قبل التحديث: `backups/pre-update-*` (آخر 5).
+- `backup_external_dir` فارغ = مجلد `Documents\POS System\Backups` الافتراضي.
 

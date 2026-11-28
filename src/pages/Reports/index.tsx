@@ -14,6 +14,7 @@ import {
   type InventorySummary,
   type ProductProfitRow,
   type ProfitLoss,
+  type SavedFile,
   type PurchasesReport,
   type SalesReport,
 } from "../../services/api";
@@ -47,17 +48,6 @@ function presetRange(p: Preset): DateRange {
     case "lastMonth": return { dateFrom: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), dateTo: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
     default: return { dateFrom: null, dateTo: null };
   }
-}
-
-/** حفظ نص CSV كملف (UTF-8 مع BOM ليفتح بالعربية في Excel). */
-function downloadCsv(text: string, name: string) {
-  const blob = new Blob(["﻿", text], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 const th = "px-3 py-2 text-start";
@@ -98,10 +88,20 @@ export default function ReportsPage() {
     tab === "sales" ? "sales_daily" : tab === "products" ? "product_profit" : tab === "purchases" ? "purchases_suppliers"
     : tab === "pnl" ? "profit_loss" : tab === "debts" ? "debts" : null;
 
+  const [saved, setSaved] = useState<SavedFile | null>(null);
+
+  async function openReports() {
+    try {
+      await api.openAppFolder("reports");
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
   async function exportNow(kind: CsvKind) {
     try {
-      const text = await api.reportExportCsv(kind, range);
-      downloadCsv(text, `${kind}-${range.dateFrom ?? "all"}_${range.dateTo ?? "all"}.csv`);
+      setError(null);
+      setSaved(await api.saveReportCsv(kind, range));
     } catch (e) {
       setError(String(e));
     }
@@ -117,6 +117,13 @@ export default function ReportsPage() {
       <PageHeader title="التقارير" />
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {error && <Alert kind="error">{error}</Alert>}
+      {saved && (
+        <Alert kind="ok">
+          <span>تم حفظ الملف في «المستندات\\POS System\\Reports» باسم </span>
+          <span dir="ltr" className="font-semibold">{saved.fileName}</span>
+          <button type="button" className="ms-3 font-semibold underline" onClick={() => void openReports()}>فتح المجلد</button>
+        </Alert>
+      )}
 
       <div className="mb-4 flex flex-wrap items-end gap-2">
         {usesRange && (

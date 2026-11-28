@@ -494,6 +494,8 @@ export interface BackupInfo { fileName: string; kind: "manual" | "auto" | "pre-m
 export interface BackupCheck { ok: boolean; message: string; migrations: number }
 export interface BackupResult { backup: BackupInfo; externalCopied: boolean; externalError: string | null }
 
+export interface AppFolders { root: string; backups: string; reports: string }
+export interface SavedFile { path: string; fileName: string }
 export interface PrinterInfo { name: string; isDefault: boolean }
 export interface RasterInput { width: number; height: number; dataBase64: string }
 
@@ -548,7 +550,10 @@ export const api = {
   reportProfitLoss: (range: DateRange) => invoke<ProfitLoss>("report_profit_loss", { range }),
   reportDebts: () => invoke<DebtsSummary>("report_debts"),
   reportInventory: () => invoke<InventorySummary>("report_inventory"),
-  reportExportCsv: (kind: CsvKind, range: DateRange) => invoke<string>("report_export_csv", { kind, range }),
+  saveReportCsv: (kind: CsvKind, range: DateRange) => invoke<SavedFile>("save_report_csv", { kind, range }),
+  appFolders: () => invoke<AppFolders>("app_folders"),
+  pickFolder: () => invoke<string | null>("pick_folder"),
+  openAppFolder: (kind: "root" | "backups" | "reports") => invoke<void>("open_app_folder", { kind }),
   adjustStockMany: (inputs: AdjustInput[]) => invoke<void>("adjust_stock_many", { inputs }),
   previewProductPrices: (input: PricePreviewInput) => invoke<PricePreview>("preview_product_prices", { input }),
   listWarehouses: () => invoke<Warehouse[]>("list_warehouses"),

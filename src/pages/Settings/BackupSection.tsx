@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import Alert from "../../components/Alert";
 import Modal from "../../components/Modal";
 import { btnGhost, btnPrimary, inputClass } from "../../components/ui";
-import { api, type BackupCheck, type BackupInfo } from "../../services/api";
+import { api, type AppFolders, type BackupCheck, type BackupInfo } from "../../services/api";
 import { useSettingsStore } from "../../store/settingsStore";
 
 const KIND_LABEL: Record<BackupInfo["kind"], string> = {
@@ -31,7 +31,7 @@ export default function BackupSection() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [restarting, setRestarting] = useState(false);
   const [keep, setKeep] = useState("14");
-  const [extDir, setExtDir] = useState("");
+  const [folders, setFolders] = useState<AppFolders | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -47,8 +47,11 @@ export default function BackupSection() {
 
   useEffect(() => {
     setKeep(settings.backup_keep_count ?? "14");
-    setExtDir(settings.backup_external_dir ?? "");
-  }, [settings.backup_keep_count, settings.backup_external_dir]);
+  }, [settings.backup_keep_count]);
+
+  useEffect(() => {
+    api.appFolders().then(setFolders).catch(() => undefined);
+  }, []);
 
   async function run<T>(fn: () => Promise<T>): Promise<T | undefined> {
     setBusy(true);
@@ -98,6 +101,28 @@ export default function BackupSection() {
     }
   }
 
+  async function chooseFolder() {
+    const picked = await run(() => api.pickFolder());
+    if (!picked) return;
+    const ok = await run(async () => {
+      await update("backup_external_dir", picked);
+      return true;
+    });
+    if (ok) setMsg({ ok: true, text: "تم تغيير مكان النسخة الإضافية" });
+  }
+
+  async function useDefaultFolder() {
+    const ok = await run(async () => {
+      await update("backup_external_dir", "");
+      return true;
+    });
+    if (ok) setMsg({ ok: true, text: "تمت العودة للمجلد الافتراضي" });
+  }
+
+  async function openFolder() {
+    await run(() => api.openAppFolder("root"));
+  }
+
   async function saveOptions() {
     const n = Number(keep);
     if (!Number.isInteger(n) || n < 3 || n > 365) {
@@ -106,7 +131,6 @@ export default function BackupSection() {
     }
     const ok = await run(async () => {
       await update("backup_keep_count", String(n));
-      await update("backup_external_dir", extDir.trim());
       return true;
     });
     if (ok) setMsg({ ok: true, text: "تم حفظ إعدادات النسخ الاحتياطي" });
@@ -130,31 +154,34 @@ export default function BackupSection() {
         </label>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-[1fr_10rem]">
-        <label className="block text-sm">
-          المجلد الخارجي (فلاشة أو قرص آخر)
-          <input
-            className={`${inputClass} mt-1`}
-            dir="ltr"
-            placeholder="E:\Backups"
-            value={extDir}
-            onChange={(e) => setExtDir(e.target.value)}
-          />
-        </label>
+      <div className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+        <div className="text-sm">
+          <div className="text-xs text-slate-500 dark:text-slate-400">مكان النسخة الإضافية</div>
+          <div dir="ltr" className="break-all text-start font-medium">{settings.backup_external_dir || folders?.backups || "—"}</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={btnPrimary} disabled={busy} onClick={() => void chooseFolder()}>
+            اختيار مجلد…
+          </button>
+          {settings.backup_external_dir && (
+            <button type="button" className={btnGhost} disabled={busy} onClick={() => void useDefaultFolder()}>
+              المجلد الافتراضي
+            </button>
+          )}
+          <button type="button" className={btnGhost} disabled={busy} onClick={() => void openFolder()}>
+            فتح مجلد البرنامج
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
         <label className="block text-sm">
           عدد النسخ التلقائية المحفوظة
-          <input
-            className={`${inputClass} mt-1`}
-            inputMode="numeric"
-            dir="ltr"
-            value={keep}
-            onChange={(e) => setKeep(e.target.value)}
-          />
+          <input className={`${inputClass} mt-1 w-32`} inputMode="numeric" dir="ltr" value={keep} onChange={(e) => setKeep(e.target.value)} />
         </label>
+        <button type="button" className={btnGhost} disabled={busy} onClick={() => void saveOptions()}>
+          حفظ
+        </button>
       </div>
-      <button type="button" className={btnGhost} disabled={busy} onClick={() => void saveOptions()}>
-        حفظ إعدادات النسخ
-      </button>
 
       {list.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400">لا توجد نسخ احتياطية بعد</p>
