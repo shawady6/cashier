@@ -13,6 +13,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // قاعدة البيانات في مجلد بيانات التطبيق، وليس في مجلد التثبيت.
             let data_dir = app.path().app_data_dir()?;
@@ -32,7 +33,10 @@ pub fn run() {
             tracing::info!("قاعدة البيانات جاهزة");
 
             let current = tauri::async_runtime::block_on(modules::settings::get_all(&pool)).unwrap_or_default();
-            tauri::async_runtime::block_on(modules::backup::run_auto_if_due(&pool, &data_dir, &current));
+            let docs = app.path().document_dir().ok();
+            let mut for_backup = current.clone();
+            for_backup.insert("backup_external_dir".into(), modules::files::effective_backup_dir(&current, docs.as_deref(), &data_dir));
+            tauri::async_runtime::block_on(modules::backup::run_auto_if_due(&pool, &data_dir, &for_backup));
 
             app.manage(AppState {
                 db: pool,
@@ -86,7 +90,10 @@ pub fn run() {
             commands::report_profit_loss,
             commands::report_debts,
             commands::report_inventory,
-            commands::report_export_csv,
+            commands::save_report_csv,
+            commands::app_folders,
+            commands::pick_folder,
+            commands::open_app_folder,
             commands::adjust_stock,
             commands::adjust_stock_many,
             commands::list_warehouses,

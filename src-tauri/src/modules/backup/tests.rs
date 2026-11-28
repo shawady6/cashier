@@ -65,7 +65,11 @@ async fn external_copy_and_external_failure() {
     let r = create_backup(&pool, d.path(), "manual", ext.path().to_str().unwrap()).await.unwrap();
     assert!(r.external_copied);
     assert!(ext.path().join(&r.backup.file_name).is_file());
+    let both = list_backups(d.path(), ext.path().to_str().unwrap());
+    assert_eq!(both.len(), 1, "النسخة الإضافية لنفس الملف لا تُعرض مرتين");
+    delete_backup(d.path(), ext.path().to_str().unwrap(), Location::Local, &r.backup.file_name).unwrap();
     assert!(list_backups(d.path(), ext.path().to_str().unwrap()).iter().any(|b| b.location == Location::External));
+    create_backup(&pool, d.path(), "manual", "").await.unwrap();
 
     let missing = ext.path().join("not-here");
     let r2 = create_backup(&pool, d.path(), "manual", missing.to_str().unwrap()).await.unwrap();

@@ -169,7 +169,9 @@ fn list_dir(dir: &Path, location: Location) -> Vec<BackupInfo> {
 pub fn list_backups(data_dir: &Path, ext: &str) -> Vec<BackupInfo> {
     let mut all = list_dir(&backups_dir(data_dir), Location::Local);
     if let Ok(Some(dir)) = external_dir(ext) {
-        all.extend(list_dir(&dir, Location::External));
+        // النسخة الإضافية لنفس الملف لا تُعرض مرتين.
+        let local: std::collections::HashSet<String> = all.iter().map(|b| b.file_name.clone()).collect();
+        all.extend(list_dir(&dir, Location::External).into_iter().filter(|b| !local.contains(&b.file_name)));
     }
     all.sort_by(|a, b| b.modified_at.cmp(&a.modified_at).then(b.file_name.cmp(&a.file_name)));
     all

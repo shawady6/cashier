@@ -33,9 +33,3 @@ pub async fn report_debts(state: State<'_, AppState>) -> Result<DebtsSummary, Ap
 pub async fn report_inventory(state: State<'_, AppState>) -> Result<InventorySummary, AppError> {
     reports::inventory_summary(&state.db).await
 }
-
-/// يعيد نص CSV فقط؛ الواجهة تحفظه بنافذة حفظ المتصفح، فلا صلاحية ملفات إضافية.
-#[tauri::command]
-pub async fn report_export_csv(state: State<'_, AppState>, kind: String, range: Range) -> Result<String, AppError> {
-    reports::csv::export_csv(&state.db, &kind, &range).await
-}

@@ -2,6 +2,7 @@
 
 mod backup;
 mod catalog;
+mod files;
 mod finance;
 mod hardware;
 mod inventory;
@@ -10,6 +11,7 @@ mod sales;
 mod updates;
 pub use backup::*;
 pub use catalog::*;
+pub use files::*;
 pub use finance::*;
 pub use hardware::*;
 pub use inventory::*;
